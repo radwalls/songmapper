@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Song Mapper</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171b22;
+      --panel-2: #1d2430;
+      --line: #2b3342;
+      --text: #edf1f7;
+      --muted: #95a2b7;
+      --accent: #7be2b9;
+      --above: #9fd4ff;
+      --below: #ffc777;
+      --danger: #ef7b7b;
+      --focus: #88b8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    h1 { margin: 0 0 8px; }
+    p { margin: 0 0 14px; color: var(--muted); }
+
+    textarea,
+    button,
+    select,
+    input {
+      font: inherit;
+      color: var(--text);
+      border-radius: 10px;
+      border: 1px solid #3a4457;
+      background: var(--panel-2);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      padding: 12px;
+      line-height: 1.4;
+    }
+
+    button,
+    select,
+    input {
+      padding: 10px;
+    }
+
+    button {
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    button:hover { background: #2a3447; }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 1px;
+    }
+
+    .main-actions {
+      margin: 12px 0 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .map-wrap,
+    .side-panel,
+    #exportBox {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .side-panel { position: sticky; top: 12px; }
+
+    .line-row {
+      display: grid;
+      grid-template-columns: repeat(var(--word-count), minmax(70px, auto));
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 14px;
+      padding: 6px 0;
+      overflow-x: auto;
+    }
+
+    .line-row .cell {
+      text-align: center;
+      min-height: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 4px 2px;
+      white-space: nowrap;
+    }
+
+    .line-row .cell.above {
+      color: var(--above);
+      font-size: 12px;
+      min-height: 28px;
+    }
+
+    .line-row .cell.word {
+      min-height: 42px;
+    }
+
+    .line-row .cell.below {
+      color: var(--below);
+      font-size: 12px;
+      min-height: 28px;
+    }
+
+    .word-btn {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #46516a;
+      border-radius: 10px;
+      background: #232a39;
+      color: var(--text);
+      font-weight: 700;
+      line-height: 1.2;
+      user-select: none;
+    }
+
+    .word-btn:hover { background: #2c364a; }
+    .word-btn.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+    }
+
+    .empty-state {
+      color: var(--muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .selection-title { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .selected-word {
+      color: var(--accent);
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      min-height: 34px;
+    }
+
+    .hint { font-size: 13px; color: var(--muted); margin-bottom: 10px; line-height: 1.35; }
+
+    .control-group {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #313b4f;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .quick-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .quick-row button { padding: 8px; font-size: 12px; }
+
+    .stack {
+      display: grid;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    #clearWordBtn {
+      border-color: #5a3341;
+      background: #3a1f29;
+      color: #ffd7de;
+    }
+
+    #clearWordBtn:hover { background: #4a2533; }
+
+    #exportBox {
+      margin-top: 14px;
+      white-space: pre-wrap;
+      color: #dbe6f7;
+      min-height: 80px;
+    }
+
+    @media (max-width: 900px) {
+      .workspace { grid-template-columns: 1fr; }
+      .side-panel { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Song Mapper</h1>
+  <p>Paste lyrics, generate the map, then click any word to add notes above and below it.</p>
+
+  <textarea id="lyricsInput" placeholder="Paste lyrics here..."></textarea>
+
+  <div class="main-actions">
+    <button id="generateBtn">Generate Song Map</button>
+    <button id="exportBtn">Export Map</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <div class="workspace">
+    <div class="map-wrap" aria-live="polite">
+      <div id="map">
+        <div class="empty-state">Your mapped lyrics will appear here.</div>
+      </div>
+    </div>
+
+    <aside class="side-panel">
+      <div class="selection-title">Selected Word</div>
+      <div id="selectedWord" class="selected-word">None</div>
+      <div class="hint">Tip: Use quick buttons for speed, or write your own custom notes.</div>
+
+      <div class="control-group">
+        <label for="aboveSelect">Above the word (vocal quality)</label>
+        <select id="aboveSelect">
+          <option value="">None</option>
+          <option value="full voice">full voice</option>
+          <option value="falsetto">falsetto</option>
+          <option value="grit">grit</option>
+          <option value="breathy">breathy</option>
+          <option value="belt">belt</option>
+          <option value="soft">soft</option>
+        </select>
+        <div class="stack">
+          <input id="customAbove" placeholder="custom above note" />
+          <button id="customAboveBtn">Apply Custom Above</button>
+        </div>
+        <div class="quick-row">
+          <button type="button" data-quick-above="full voice">Full</button>
+          <button type="button" data-quick-above="grit">Grit</button>
+          <button type="button" data-quick-above="falsetto">Falsetto</button>
+          <button type="button" data-quick-above="breathy">Breathy</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="belowSelect">Below the word (performance instruction)</label>
+        <select id="belowSelect">
+          <option value="">None</option>
+          <option value="support down">support down</option>
+          <option value="breathe">breathe</option>
+          <option value="lean in">lean in</option>
+          <option value="drop jaw">drop jaw</option>
+          <option value="punch word">punch word</option>
+          <option value="hold back">hold back</option>
+        </select>
+        <div class="stack">
+          <input id="customBelow" placeholder="custom below note" />
+          <button id="customBelowBtn">Apply Custom Below</button>
+        </div>
+        <div class="quick-row">
+          <button type="button" data-quick-below="support down">Support</button>
+          <button type="button" data-quick-below="breathe">Breathe</button>
+          <button type="button" data-quick-below="lean in">Lean In</button>
+          <button type="button" data-quick-below="drop jaw">Jaw</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <button id="clearWordBtn">Clear This Word</button>
+      </div>
+    </aside>
+  </div>
+
+  <pre id="exportBox">Nothing to export yet.</pre>
+
+  <script>
+    (() => {
+      let selectedButton = null;
+
+      const lyricsInput = document.getElementById("lyricsInput");
+      const map = document.getElementById("map");
+      const selectedWord = document.getElementById("selectedWord");
+      const aboveSelect = document.getElementById("aboveSelect");
+      const belowSelect = document.getElementById("belowSelect");
+      const exportBox = document.getElementById("exportBox");
+      const customAbove = document.getElementById("customAbove");
+      const customBelow = document.getElementById("customBelow");
+
+      const normalizeLines = (text) => text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+      const createCell = (className, text = "") => {
+        const cell = document.createElement("div");
+        cell.className = `cell ${className}`;
+        cell.textContent = text;
+        return cell;
+      };
+
+      function optionExists(select, value) {
+        return [...select.options].some((option) => option.value === value);
+      }
+
+      function updatePanelFromSelection() {
+        if (!selectedButton) {
+          selectedWord.textContent = "None";
+          aboveSelect.value = "";
+          belowSelect.value = "";
+          return;
+        }
+
+        selectedWord.textContent = selectedButton.dataset.word;
+        aboveSelect.value = optionExists(aboveSelect, selectedButton.dataset.above) ? selectedButton.dataset.above : "";
+        belowSelect.value = optionExists(belowSelect, selectedButton.dataset.below) ? selectedButton.dataset.below : "";
+      }
+
+      function selectWord(button) {
+        if (selectedButton) selectedButton.classList.remove("selected");
+        selectedButton = button;
+        selectedButton.classList.add("selected");
+        selectedButton.focus();
+        updatePanelFromSelection();
+      }
+
+      function applyAbove(value) {
+        if (!selectedButton) return;
+        const safeValue = value.trim();
+        selectedButton.dataset.above = safeValue;
+        selectedButton.closest(".line-row").querySelector(`[data-above-id="${selectedButton.dataset.wordId}"]`).textContent = safeValue;
+        aboveSelect.value = optionExists(aboveSelect, safeValue) ? safeValue : "";
+      }
+
+      function applyBelow(value) {
+        if (!selectedButton) return;
+        const safeValue = value.trim();
+        selectedButton.dataset.below = safeValue;
+        selectedButton.closest(".line-row").querySelector(`[data-below-id="${selectedButton.dataset.wordId}"]`).textContent = safeValue;
+        belowSelect.value = optionExists(belowSelect, safeValue) ? safeValue : "";
+      }
+
+      function clearSelectedWord() {
+        if (!selectedButton) return;
+        applyAbove("");
+        applyBelow("");
+      }
+
+      function generateMap() {
+        map.innerHTML = "";
+        exportBox.textContent = "Nothing to export yet.";
+        selectedButton = null;
+        updatePanelFromSelection();
+
+        const text = lyricsInput.value;
+        if (!text.trim()) {
+          map.innerHTML = '<div class="empty-state">Paste lyrics first, then click Generate Song Map.</div>';
+          return;
+        }
+
+        const lines = normalizeLines(text);
+
+        lines.forEach((lineText, lineIndex) => {
+          if (!lineText.trim()) {
+            const spacer = document.createElement("div");
+            spacer.style.height = "20px";
+            map.appendChild(spacer);
+            return;
+          }
+
+          const words = lineText.trim().split(/\s+/);
+          const row = document.createElement("div");
+          row.className = "line-row";
+          row.style.setProperty("--word-count", words.length);
+
+          words.forEach((_, wordIndex) => {
+            row.appendChild(createCell("above"));
+          });
+
+          words.forEach((word, wordIndex) => {
+            const wordCell = createCell("word");
+            const button = document.createElement("button");
+            const wordId = `${lineIndex}-${wordIndex}`;
+            button.type = "button";
+            button.className = "word-btn";
+            button.textContent = word;
+            button.dataset.word = word;
+            button.dataset.wordId = wordId;
+            button.dataset.above = "";
+            button.dataset.below = "";
+            button.addEventListener("click", () => selectWord(button));
+            wordCell.appendChild(button);
+            row.appendChild(wordCell);
+          });
+
+          words.forEach((_, wordIndex) => {
+            const below = createCell("below");
+            below.dataset.belowId = `${lineIndex}-${wordIndex}`;
+            row.appendChild(below);
+          });
+
+          const aboveCells = row.querySelectorAll(".cell.above");
+          aboveCells.forEach((cell, i) => {
+            cell.dataset.aboveId = `${lineIndex}-${i}`;
+          });
+
+          map.appendChild(row);
+        });
+      }
+
+      function exportMap() {
+        const rows = [...map.querySelectorAll(".line-row")];
+        if (!rows.length) {
+          exportBox.textContent = "Nothing to export yet.";
+          return;
+        }
+
+        const output = rows.map((row) => {
+          const words = [...row.querySelectorAll(".word-btn")];
+          const above = words.map((btn) => btn.dataset.above || "-").join(" | ");
+          const lyric = words.map((btn) => btn.dataset.word).join(" ");
+          const below = words.map((btn) => btn.dataset.below || "-").join(" | ");
+          return `ABOVE: ${above}\nLYRIC: ${lyric}\nBELOW: ${below}`;
+        }).join("\n\n");
+
+        exportBox.textContent = output;
+      }
+
+      function clearAll() {
+        lyricsInput.value = "";
+        map.innerHTML = '<div class="empty-state">Your mapped lyrics will appear here.</div>';
+        exportBox.textContent = "Nothing to export yet.";
+        selectedButton = null;
+        updatePanelFromSelection();
+      }
+
+      document.getElementById("generateBtn").addEventListener("click", generateMap);
+      document.getElementById("exportBtn").addEventListener("click", exportMap);
+      document.getElementById("clearBtn").addEventListener("click", clearAll);
+      document.getElementById("clearWordBtn").addEventListener("click", clearSelectedWord);
+
+      aboveSelect.addEventListener("change", () => applyAbove(aboveSelect.value));
+      belowSelect.addEventListener("change", () => applyBelow(belowSelect.value));
+
+      document.getElementById("customAboveBtn").addEventListener("click", () => {
+        applyAbove(customAbove.value);
+      });
+
+      document.getElementById("customBelowBtn").addEventListener("click", () => {
+        applyBelow(customBelow.value);
+      });
+
+      document.querySelectorAll("[data-quick-above]").forEach((button) => {
+        button.addEventListener("click", () => applyAbove(button.dataset.quickAbove));
+      });
+
+      document.querySelectorAll("[data-quick-below]").forEach((button) => {
+        button.addEventListener("click", () => applyBelow(button.dataset.quickBelow));
+      });
+    })();
+  </script>
+</body>
+</html>
