@@ -26,11 +26,11 @@
       background: radial-gradient(circle at top, #141a28 0, var(--bg) 38%);
       color: var(--text);
       font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-      min-width: 1200px;
+      min-width: 0;
     }
 
     .app {
-      width: 1320px;
+      width: min(1400px, 100vw - 20px);
       margin: 0 auto;
       padding: 18px;
       display: grid;
@@ -137,7 +137,7 @@
 
     .workspace {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
+      grid-template-columns: minmax(0, 1fr) clamp(280px, 30vw, 360px);
       gap: 12px;
       align-items: start;
     }
@@ -145,12 +145,14 @@
     .map-wrap {
       padding: 14px;
       min-height: 560px;
+      overflow: hidden;
     }
 
     #map {
       min-height: 500px;
       display: grid;
       gap: 10px;
+      overflow-x: auto;
     }
 
     .empty-state {
@@ -193,12 +195,21 @@
 
     .line-words {
       position: relative;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      gap: 6px;
       padding: 2px;
       min-height: 48px;
+      overflow: hidden;
+    }
+
+    .line-flow {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      gap: 6px;
+      min-height: 48px;
+      width: max-content;
+      min-width: 100%;
     }
 
     .pitch-line-layer {
@@ -206,18 +217,22 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      overflow: visible;
+      overflow: hidden;
       pointer-events: none;
       z-index: 3;
     }
 
     .pitch-path {
-      stroke-width: 3.5;
+      stroke-width: 3;
       fill: none;
       stroke-linecap: round;
       stroke-linejoin: round;
       filter: drop-shadow(0 0 2px rgba(95, 220, 255, 0.25));
     }
+
+    .pitch-point { fill: #9bf3ff; stroke: #042430; stroke-width: 1; cursor: pointer; }
+    .pitch-point.selected { fill: #ffe667; }
+    .pitch-label { fill: #b7e9ff; font-size: 10px; opacity: 0.75; }
 
     .pitch-path.soft {
       opacity: 0.52;
@@ -227,55 +242,38 @@
       opacity: 0.96;
     }
 
-    .breath-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 4;
-    }
-
-    .breath-marker {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      border-radius: 999px;
+    .breath-block {
+      position: relative;
       border: 1px solid #9ef5ff;
       background: rgba(158, 245, 255, 0.2);
-      pointer-events: auto;
+      color: #d8fbff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
       cursor: pointer;
+      user-select: none;
+      border-radius: 4px;
     }
 
-    .breath-marker.micro {
-      width: 6px;
-      height: 6px;
-      opacity: 0.65;
+    .breath-block::after {
+      content: attr(data-type);
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 100%;
+      margin-top: 2px;
+      font-size: 9px;
+      color: #a6dbe3;
+      white-space: nowrap;
     }
 
-    .breath-marker.quick {
-      width: 8px;
-      height: 8px;
-      opacity: 0.75;
-    }
-
-    .breath-marker.normal {
-      width: 10px;
-      height: 10px;
-      opacity: 0.85;
-    }
-
-    .breath-marker.deep {
-      width: 12px;
-      height: 12px;
-      box-shadow: 0 0 0 2px rgba(158, 245, 255, 0.18);
-      opacity: 0.95;
-    }
-
-    .breath-marker.maximum {
-      width: 14px;
-      height: 14px;
-      border-width: 2px;
-      box-shadow: 0 0 0 3px rgba(158, 245, 255, 0.24);
-      opacity: 1;
-    }
+    .breath-block.micro { width: 10px; height: 18px; }
+    .breath-block.quick { width: 14px; height: 20px; }
+    .breath-block.normal { width: 18px; height: 22px; }
+    .breath-block.deep { width: 24px; height: 24px; }
+    .breath-block.maximum { width: 30px; height: 28px; border-width: 2px; }
 
     .line-break {
       height: 14px;
@@ -344,35 +342,7 @@
       overflow-wrap: anywhere;
     }
 
-    .meta {
-      font-size: 11px;
-      text-align: center;
-      color: #b5bed2;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .vol-bar {
-      width: 36px;
-      height: 6px;
-      border-radius: 999px;
-      border: 1px solid #4c576f;
-      background: #141a27;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .vol-fill {
-      height: 100%;
-      background: hsl(190 90% 60%);
-      width: 0%;
-    }
-
-    .vol-bar.inactive {
-      opacity: 0;
-    }
+    .meta { display: none; }
 
     .side-panel {
       position: sticky;
@@ -406,7 +376,7 @@
 
     .mode-row {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
 
@@ -433,6 +403,11 @@
       grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: center;
+    }
+
+    @media (max-width: 1200px) {
+      .workspace { grid-template-columns: 1fr; }
+      .side-panel { position: static; }
     }
 
     #exportBox {
@@ -484,6 +459,7 @@
           <button id="enuncModeBtn" class="mode-toggle">Enunciation Draw</button>
           <button id="pitchModeBtn" class="mode-toggle">Pitch Draw</button>
           <button id="breathModeBtn" class="mode-toggle">Breath Tool</button>
+          <button id="volumeModeBtn" class="mode-toggle">Volume Paint</button>
         </div>
 
         <div class="group">
@@ -538,16 +514,7 @@
         </div>
 
         <div class="group">
-          <label for="volumeInput">Volume (1-10)</label>
-          <div class="row">
-            <input id="volumeInput" type="number" min="1" max="10" placeholder="-" />
-            <button id="applyVolumeBtn">Apply</button>
-          </div>
-          <button id="clearVolumeBtn">Clear Volume</button>
-        </div>
-
-        <div class="group">
-          <label for="breathTypeSelect">Breath type</label>
+          <label for="breathTypeSelect">Breath type (click to insert, drag to move)</label>
           <select id="breathTypeSelect">
             <option value="micro">micro breath</option>
             <option value="quick">quick breath</option>
@@ -592,12 +559,12 @@
       const belowSelect = document.getElementById("belowSelect");
       const customAbove = document.getElementById("customAbove");
       const customBelow = document.getElementById("customBelow");
-      const volumeInput = document.getElementById("volumeInput");
       const breathTypeSelect = document.getElementById("breathTypeSelect");
 
       const enuncModeBtn = document.getElementById("enuncModeBtn");
       const pitchModeBtn = document.getElementById("pitchModeBtn");
       const breathModeBtn = document.getElementById("breathModeBtn");
+      const volumeModeBtn = document.getElementById("volumeModeBtn");
 
       let words = [];
       let lines = [];
@@ -607,11 +574,14 @@
       let drawMode = null;
       let isDrawing = false;
       let breathSeed = 0;
-      let lastBreathPlacement = null;
+      let pitchPointSeed = 0;
+      let showPitchPoints = true;
+      let activePitchDrag = null;
+      let activeBreathDrag = null;
 
-      function normalizeLyrics(text) {
-        return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-      }
+      function normalizeLyrics(text) { return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n"); }
+      function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+      function mmToPx(mm) { return mm * 3.78; }
 
       function createStop(offset, color) {
         const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
@@ -621,338 +591,166 @@
       }
 
       function makeWordData(text, index, lineIndex) {
-        return {
-          index,
-          lineIndex,
-          text,
-          above: "",
-          below: "",
-          volume: null,
-          enunciation: 50,
-          letterLevels: [],
-          pitch: 50,
-          card: null,
-          aboveNode: null,
-          belowNode: null,
-          wordNode: null,
-          volNode: null,
-          volBarNode: null,
-          volFillNode: null
-        };
+        return { index, lineIndex, text, above: "", below: "", volume: null, enunciation: 50, letterLevels: [], pitch: 50, card: null, aboveNode: null, belowNode: null, wordNode: null };
       }
 
       function clearModel() {
-        words = [];
-        lines = [];
-        selectedIndices = new Set();
-        lastSelectedIndex = null;
-        lastLineSelected = null;
-        lastBreathPlacement = null;
+        words = []; lines = []; selectedIndices = new Set(); lastSelectedIndex = null; lastLineSelected = null;
       }
 
       function renderEmpty(message) {
         map.innerHTML = "";
-        const empty = document.createElement("div");
-        empty.className = "empty-state";
-        empty.textContent = message;
-        map.appendChild(empty);
+        const empty = document.createElement("div"); empty.className = "empty-state"; empty.textContent = message; map.appendChild(empty);
       }
 
       function generateMap() {
-        clearModel();
-        exportBox.textContent = "Nothing exported yet.";
+        clearModel(); exportBox.textContent = "Nothing exported yet.";
         const raw = lyricsInput.value;
-
-        if (!raw.trim()) {
-          renderEmpty("Paste lyrics and click “Generate Song Map”.");
-          return;
-        }
-
+        if (!raw.trim()) { renderEmpty("Paste lyrics and click “Generate Song Map”."); return; }
         map.innerHTML = "";
-        const parsedLines = normalizeLyrics(raw);
         let globalIndex = 0;
 
-        parsedLines.forEach(function (lineText, lineIndex) {
-          if (!lineText.trim()) {
-            const breakNode = document.createElement("div");
-            breakNode.className = "line-break";
-            map.appendChild(breakNode);
-            lines.push({ lineIndex, wordIndices: [], handle: null, raw: "" });
-            return;
-          }
+        normalizeLyrics(raw).forEach(function (lineText, lineIndex) {
+          if (!lineText.trim()) { const br = document.createElement("div"); br.className = "line-break"; map.appendChild(br); lines.push({ lineIndex, wordIndices: [], raw: "" }); return; }
 
-          const row = document.createElement("div");
-          row.className = "line-row";
+          const row = document.createElement("div"); row.className = "line-row";
+          const handle = document.createElement("button"); handle.type = "button"; handle.className = "line-handle"; handle.textContent = String(lineIndex + 1);
+          const wordsWrap = document.createElement("div"); wordsWrap.className = "line-words";
+          const flow = document.createElement("div"); flow.className = "line-flow";
 
-          const handle = document.createElement("button");
-          handle.type = "button";
-          handle.className = "line-handle";
-          handle.textContent = String(lineIndex + 1);
-
-          const wordsWrap = document.createElement("div");
-          wordsWrap.className = "line-words";
-          const pitchSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-          pitchSvg.classList.add("pitch-line-layer");
+          const pitchSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); pitchSvg.classList.add("pitch-line-layer");
           const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
           const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
-          const gradientId = "pitch-gradient-" + lineIndex + "-" + Date.now();
-          gradient.setAttribute("id", gradientId);
-          gradient.setAttribute("x1", "0%");
-          gradient.setAttribute("y1", "100%");
-          gradient.setAttribute("x2", "0%");
-          gradient.setAttribute("y2", "0%");
-          gradient.appendChild(createStop("0%", "#4b7bff"));
-          gradient.appendChild(createStop("50%", "#67dfff"));
-          gradient.appendChild(createStop("100%", "#ffe667"));
-
-          const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-          const clipId = "pitch-gap-clip-" + lineIndex + "-" + Date.now();
-          clipPath.setAttribute("id", clipId);
-          defs.append(gradient, clipPath);
-
-          const pitchSoft = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchSoft.classList.add("pitch-path", "soft");
-          pitchSoft.setAttribute("stroke", "url(#" + gradientId + ")");
-
-          const pitchStrong = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchStrong.classList.add("pitch-path", "strong");
-          pitchStrong.setAttribute("stroke", "url(#" + gradientId + ")");
-          pitchStrong.setAttribute("clip-path", "url(#" + clipId + ")");
-
-          pitchSvg.append(defs, pitchSoft, pitchStrong);
-          wordsWrap.appendChild(pitchSvg);
-          const breathLayer = document.createElement("div");
-          breathLayer.className = "breath-layer";
-          wordsWrap.appendChild(breathLayer);
+          const gid = "pitch-gradient-" + lineIndex + "-" + Date.now();
+          gradient.setAttribute("id", gid); gradient.setAttribute("x1", "0%"); gradient.setAttribute("y1", "100%"); gradient.setAttribute("x2", "0%"); gradient.setAttribute("y2", "0%");
+          gradient.appendChild(createStop("0%", "#4b7bff")); gradient.appendChild(createStop("50%", "#67dfff")); gradient.appendChild(createStop("100%", "#ffe667"));
+          defs.appendChild(gradient);
+          const soft = document.createElementNS("http://www.w3.org/2000/svg", "path"); soft.classList.add("pitch-path", "soft"); soft.setAttribute("stroke", "url(#" + gid + ")");
+          const strong = document.createElementNS("http://www.w3.org/2000/svg", "path"); strong.classList.add("pitch-path", "strong"); strong.setAttribute("stroke", "url(#" + gid + ")");
+          const pointsGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          pitchSvg.append(defs, soft, strong, pointsGroup);
 
           const wordIndices = [];
-
           lineText.trim().split(/\s+/).forEach(function (wordText) {
             const data = makeWordData(wordText, globalIndex, lineIndex);
             const card = createWordCard(data);
             data.card = card;
-            words.push(data);
-            wordIndices.push(globalIndex);
-            wordsWrap.appendChild(card);
-            globalIndex += 1;
+            words.push(data); wordIndices.push(globalIndex); flow.appendChild(card); globalIndex += 1;
           });
 
-          handle.addEventListener("click", function (event) {
-            handleLineSelection(lineIndex, event);
-          });
+          handle.addEventListener("click", function (event) { handleLineSelection(lineIndex, event); });
+          wordsWrap.addEventListener("mousedown", function (event) { handleWrapMouseDown(event, lineIndex); });
+          wordsWrap.addEventListener("contextmenu", function (event) { if (drawMode === "pitch") event.preventDefault(); });
 
-          wordsWrap.addEventListener("mousedown", function (event) {
-            if (drawMode !== "breath" || event.button !== 0) return;
-            isDrawing = true;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
-            event.preventDefault();
-          });
-
-          wordsWrap.addEventListener("mousemove", function (event) {
-            if (!isDrawing || drawMode !== "breath") return;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
-          });
-
-          row.append(handle, wordsWrap);
-          map.appendChild(row);
-          lines.push({
-            lineIndex,
-            wordIndices,
-            handle,
-            raw: lineText,
-            wordsWrap,
-            pitchSvg,
-            pitchSoft,
-            pitchStrong,
-            clipPath,
-            breaths: [],
-            breathLayer
-          });
+          wordsWrap.append(pitchSvg, flow);
+          row.append(handle, wordsWrap); map.appendChild(row);
+          lines.push({ lineIndex, wordIndices, handle, raw: lineText, wordsWrap, flow, pitchSvg, pitchSoft: soft, pitchStrong: strong, pointsGroup, breaths: [], pitchPoints: [] });
         });
 
         composer.classList.add("collapsed");
+        addPitchToggleControl();
         updateSelectionUI();
+        renderAllLineFlows();
         redrawAllPitchLines();
       }
 
+      function addPitchToggleControl() {
+        if (document.getElementById("togglePitchPointsBtn")) return;
+        const group = document.createElement("div"); group.className = "group";
+        group.innerHTML = '<button id="togglePitchPointsBtn">Hide Pitch Points</button>';
+        document.querySelector('.side-panel').appendChild(group);
+        document.getElementById('togglePitchPointsBtn').addEventListener('click', function () {
+          showPitchPoints = !showPitchPoints;
+          this.textContent = showPitchPoints ? 'Hide Pitch Points' : 'Show Pitch Points';
+          redrawAllPitchLines();
+        });
+      }
+
       function createWordCard(wordData) {
-        const card = document.createElement("div");
-        card.className = "word-card";
-        card.dataset.index = String(wordData.index);
-
-        const above = document.createElement("div");
-        above.className = "annotation above";
-        above.textContent = "\u00a0";
-
-        const wordNode = document.createElement("div");
-        wordNode.className = "word";
-
-        const below = document.createElement("div");
-        below.className = "annotation below";
-        below.textContent = "\u00a0";
-
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const volLabel = document.createElement("span");
-        volLabel.textContent = "Vol -";
-        const volBar = document.createElement("span");
-        volBar.className = "vol-bar inactive";
-        const volFill = document.createElement("span");
-        volFill.className = "vol-fill";
-        volBar.appendChild(volFill);
-        meta.append(volLabel, volBar);
-
+        const card = document.createElement("div"); card.className = "word-card"; card.dataset.index = String(wordData.index);
+        const above = document.createElement("div"); above.className = "annotation above"; above.textContent = " ";
+        const wordNode = document.createElement("div"); wordNode.className = "word";
+        const below = document.createElement("div"); below.className = "annotation below"; below.textContent = " ";
+        const meta = document.createElement("div"); meta.className = "meta";
         card.append(above, wordNode, below, meta);
-
-        wordData.aboveNode = above;
-        wordData.belowNode = below;
-        wordData.wordNode = wordNode;
-        wordData.volNode = volLabel;
-        wordData.volBarNode = volBar;
-        wordData.volFillNode = volFill;
-
+        wordData.aboveNode = above; wordData.belowNode = below; wordData.wordNode = wordNode;
         applyWordVisual(wordData);
 
-        card.addEventListener("click", function (event) {
-          handleWordSelection(wordData.index, event);
-        });
-
+        card.addEventListener("click", function (event) { handleWordSelection(wordData.index, event); });
         card.addEventListener("mousedown", function (event) {
-          if (!drawMode || drawMode === "breath" || event.button !== 0) return;
-          isDrawing = true;
-          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
-          event.preventDefault();
+          if (event.button !== 0 || !drawMode || drawMode === "breath" || drawMode === "pitch") return;
+          isDrawing = true; applyDrawAtPoint(wordData.index, event.clientX, event.clientY); event.preventDefault();
         });
-
         card.addEventListener("mousemove", function (event) {
-          if (!isDrawing || !drawMode || drawMode === "breath") return;
+          if (!isDrawing || !drawMode || drawMode === "breath" || drawMode === "pitch") return;
           applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
         });
-
-        card.addEventListener("dblclick", function () {
-          selectOnly(wordData.index);
-          editWordInput.value = wordData.text;
-          editWordInput.focus();
-          editWordInput.select();
-        });
-
+        card.addEventListener("dblclick", function () { selectOnly(wordData.index); editWordInput.value = wordData.text; editWordInput.focus(); editWordInput.select(); });
         return card;
       }
 
-      function handleWordSelection(index, event) {
-        const isMultiToggle = event.ctrlKey || event.metaKey;
-        const isRange = event.shiftKey;
-
-        if (isRange && lastSelectedIndex !== null) {
-          const [start, end] = [lastSelectedIndex, index].sort(function (a, b) { return a - b; });
-          if (!isMultiToggle) selectedIndices.clear();
-          for (let i = start; i <= end; i += 1) selectedIndices.add(i);
-        } else if (isMultiToggle) {
-          if (selectedIndices.has(index)) selectedIndices.delete(index);
-          else selectedIndices.add(index);
-          lastSelectedIndex = index;
-        } else {
-          selectOnly(index);
+      function handleWrapMouseDown(event, lineIndex) {
+        const line = lines.find(function (l) { return l.lineIndex === lineIndex; });
+        if (!line) return;
+        if (drawMode === 'breath' && event.button === 0) {
+          const b = event.target.closest('.breath-block');
+          if (b) { activeBreathDrag = { lineIndex, breathId: b.dataset.id }; return; }
+          insertBreathAtPoint(line, event.clientX); event.preventDefault(); return;
         }
+        if (drawMode !== 'pitch') return;
+        event.preventDefault();
+        const pt = event.target.closest('.pitch-point');
+        if (event.button === 2 || event.ctrlKey || event.metaKey) { if (pt) removePitchPoint(line, pt.dataset.id); return; }
+        if (pt) {
+          line.selectedPitchPointId = pt.dataset.id;
+          activePitchDrag = { lineIndex, pointId: pt.dataset.id };
+          redrawPitchLine(lineIndex);
+          return;
+        }
+        addPitchPoint(line, event.clientX, event.clientY);
+      }
 
-        if (isRange) lastSelectedIndex = index;
-        updateSelectionUI();
+      function handleWordSelection(index, event) {
+        const isMultiToggle = event.ctrlKey || event.metaKey; const isRange = event.shiftKey;
+        if (isRange && lastSelectedIndex !== null) {
+          const pair = [lastSelectedIndex, index].sort(function (a, b) { return a - b; }); if (!isMultiToggle) selectedIndices.clear(); for (let i = pair[0]; i <= pair[1]; i += 1) selectedIndices.add(i);
+        } else if (isMultiToggle) { if (selectedIndices.has(index)) selectedIndices.delete(index); else selectedIndices.add(index); lastSelectedIndex = index; }
+        else selectOnly(index);
+        if (isRange) lastSelectedIndex = index; updateSelectionUI();
       }
 
       function handleLineSelection(lineIndex, event) {
-        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
-        if (!line || !line.wordIndices.length) return;
-
-        const isShift = event.shiftKey;
-        const isMulti = event.ctrlKey || event.metaKey;
-
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; }); if (!line || !line.wordIndices.length) return;
+        const isShift = event.shiftKey; const isMulti = event.ctrlKey || event.metaKey;
         if (isShift && lastLineSelected !== null) {
-          const [start, end] = [lastLineSelected, lineIndex].sort(function (a, b) { return a - b; });
-          if (!isMulti) selectedIndices.clear();
-          lines.forEach(function (item) {
-            if (item.lineIndex < start || item.lineIndex > end) return;
-            item.wordIndices.forEach(function (idx) { selectedIndices.add(idx); });
-          });
+          const pair = [lastLineSelected, lineIndex].sort(function (a, b) { return a - b; }); if (!isMulti) selectedIndices.clear();
+          lines.forEach(function (item) { if (item.lineIndex < pair[0] || item.lineIndex > pair[1]) return; item.wordIndices.forEach(function (idx) { selectedIndices.add(idx); }); });
         } else {
           if (!isMulti) selectedIndices.clear();
-          line.wordIndices.forEach(function (idx) {
-            if (isMulti && selectedIndices.has(idx)) selectedIndices.delete(idx);
-            else selectedIndices.add(idx);
-          });
+          line.wordIndices.forEach(function (idx) { if (isMulti && selectedIndices.has(idx)) selectedIndices.delete(idx); else selectedIndices.add(idx); });
         }
-
-        lastLineSelected = lineIndex;
-        if (line.wordIndices.length) lastSelectedIndex = line.wordIndices[line.wordIndices.length - 1];
-        updateSelectionUI();
+        lastLineSelected = lineIndex; lastSelectedIndex = line.wordIndices[line.wordIndices.length - 1]; updateSelectionUI();
       }
 
-      function selectOnly(index) {
-        selectedIndices.clear();
-        selectedIndices.add(index);
-        lastSelectedIndex = index;
-      }
-
+      function selectOnly(index) { selectedIndices.clear(); selectedIndices.add(index); lastSelectedIndex = index; }
       function updateSelectionUI() {
-        words.forEach(function (word) {
-          word.card.classList.toggle("selected", selectedIndices.has(word.index));
-        });
-
-        lines.forEach(function (line) {
-          if (!line.handle || !line.wordIndices.length) return;
-          const allSelected = line.wordIndices.every(function (idx) { return selectedIndices.has(idx); });
-          line.handle.classList.toggle("active", allSelected);
-        });
-
+        words.forEach(function (word) { word.card.classList.toggle("selected", selectedIndices.has(word.index)); });
+        lines.forEach(function (line) { if (!line.handle || !line.wordIndices.length) return; const allSelected = line.wordIndices.every(function (idx) { return selectedIndices.has(idx); }); line.handle.classList.toggle("active", allSelected); });
         const count = selectedIndices.size;
-        if (count === 0) {
-          selectedSummary.textContent = "0 words selected";
-          selectedWordName.textContent = "No word selected";
-          editWordInput.value = "";
-          return;
-        }
-
-        if (count === 1) {
-          const selectedIndex = Array.from(selectedIndices)[0];
-          const w = words[selectedIndex];
-          selectedSummary.textContent = "1 word selected";
-          selectedWordName.textContent = "Word: " + w.text;
-          editWordInput.value = w.text;
-          return;
-        }
-
-        selectedSummary.textContent = String(count) + " words selected";
-        selectedWordName.textContent = "Batch edit active";
-        editWordInput.value = "";
+        if (count === 0) { selectedSummary.textContent = "0 words selected"; selectedWordName.textContent = "No word selected"; editWordInput.value = ""; return; }
+        if (count === 1) { const w = words[Array.from(selectedIndices)[0]]; selectedSummary.textContent = "1 word selected"; selectedWordName.textContent = "Word: " + w.text; editWordInput.value = w.text; return; }
+        selectedSummary.textContent = String(count) + " words selected"; selectedWordName.textContent = "Batch edit active"; editWordInput.value = "";
       }
 
-      function applyToSelected(fn) {
-        if (!selectedIndices.size) return;
-        selectedIndices.forEach(function (idx) {
-          const w = words[idx];
-          if (!w) return;
-          fn(w);
-          applyWordVisual(w);
-        });
-        updateSelectionUI();
-      }
+      function applyToSelected(fn) { if (!selectedIndices.size) return; selectedIndices.forEach(function (idx) { const w = words[idx]; if (!w) return; fn(w); applyWordVisual(w); }); updateSelectionUI(); }
 
       function applyWordVisual(word) {
-        word.aboveNode.textContent = word.above || "\u00a0";
-        word.belowNode.textContent = word.below || "\u00a0";
-
-        normalizeLetterLevels(word);
-        renderWordLetters(word);
-
-        if (word.volume == null) {
-          word.volNode.textContent = "Vol -";
-          word.volFillNode.style.width = "0%";
-          word.volBarNode.classList.add("inactive");
-        } else {
+        word.aboveNode.textContent = word.above || " "; word.belowNode.textContent = word.below || " ";
+        normalizeLetterLevels(word); renderWordLetters(word);
+        if (word.volume == null) word.card.style.background = "linear-gradient(180deg, #1b2332 0%, #171e2b 100%)";
+        else {
           const vol = clamp(Math.round(word.volume), 1, 10);
-          word.volNode.textContent = "Vol " + vol;
-          word.volFillNode.style.width = String(vol * 10) + "%";
-          word.volFillNode.style.background = volumeColor(vol);
-          word.volBarNode.classList.remove("inactive");
+          word.card.style.background = "linear-gradient(180deg, " + volumeColor(vol) + "33 0%, #171e2b 90%)";
         }
         redrawPitchLine(word.lineIndex);
       }
@@ -962,368 +760,196 @@
         enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
         pitchModeBtn.classList.toggle("active", drawMode === "pitch");
         breathModeBtn.classList.toggle("active", drawMode === "breath");
+        volumeModeBtn.classList.toggle("active", drawMode === "volume");
       }
 
       function applyDrawAtPoint(index, clientX, clientY) {
-        const w = words[index];
-        if (!w || !w.card) return;
-        const rect = w.card.getBoundingClientRect();
-        const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
-        const value = Math.round((1 - ratio) * 100);
-
-        if (drawMode === "enunciation") {
-          paintLetterLevels(w, clientX, value);
-        } else if (drawMode === "pitch") {
-          w.pitch = value;
-        }
+        const w = words[index]; if (!w || !w.card) return;
+        const rect = w.card.getBoundingClientRect(); const ratio = clamp((clientY - rect.top) / rect.height, 0, 1); const value = Math.round((1 - ratio) * 100);
+        if (drawMode === "enunciation") paintLetterLevels(w, clientX, value);
+        else if (drawMode === "volume") w.volume = clamp(Math.round((value / 100) * 9 + 1), 1, 10);
         applyWordVisual(w);
       }
 
       function normalizeLetterLevels(word) {
-        const len = word.text.length;
-        if (!len) {
-          word.letterLevels = [];
-          word.enunciation = 50;
-          return;
-        }
-        if (!Array.isArray(word.letterLevels) || word.letterLevels.length !== len) {
-          word.letterLevels = Array.from({ length: len }, function () {
-            return clamp(word.enunciation, 0, 100);
-          });
-        }
+        const len = word.text.length; if (!len) { word.letterLevels = []; word.enunciation = 50; return; }
+        if (!Array.isArray(word.letterLevels) || word.letterLevels.length !== len) word.letterLevels = Array.from({ length: len }, function () { return clamp(word.enunciation, 0, 100); });
       }
-
       function renderWordLetters(word) {
-        word.wordNode.innerHTML = "";
-        if (!word.text.length) return;
-
-        let total = 0;
+        word.wordNode.innerHTML = ""; if (!word.text.length) return; let total = 0;
         Array.from(word.text).forEach(function (char, idx) {
-          const level = clamp(word.letterLevels[idx], 0, 100);
-          total += level;
-
-          const span = document.createElement("span");
-          span.style.display = "inline-block";
-          span.style.transition = "font-size 60ms linear, opacity 60ms linear, transform 60ms linear";
-
-          let renderedChar = char;
-          let fontSize = 18;
-          let fontWeight = 700;
-          let opacity = 0.9;
-
-          if (level < 35) {
-            renderedChar = char.toLowerCase();
-            fontSize = 16;
-            fontWeight = 600;
-            opacity = 0.72;
-          } else if (level > 70) {
-            renderedChar = char.toUpperCase();
-            fontSize = 20;
-            fontWeight = 900;
-            opacity = 1;
-          }
-
-          span.textContent = renderedChar;
-          span.style.fontSize = String(fontSize) + "px";
-          span.style.fontWeight = String(fontWeight);
-          span.style.opacity = String(opacity);
-          span.style.transform = level > 70 ? "translateY(-0.5px)" : "none";
-          word.wordNode.appendChild(span);
+          const level = clamp(word.letterLevels[idx], 0, 100); total += level;
+          const span = document.createElement("span"); span.style.display = "inline-block";
+          let renderedChar = char, fontSize = 18, fontWeight = 700, opacity = 0.9;
+          if (level < 35) { renderedChar = char.toLowerCase(); fontSize = 16; fontWeight = 600; opacity = 0.72; }
+          else if (level > 70) { renderedChar = char.toUpperCase(); fontSize = 20; fontWeight = 900; opacity = 1; }
+          span.textContent = renderedChar; span.style.fontSize = String(fontSize) + "px"; span.style.fontWeight = String(fontWeight); span.style.opacity = String(opacity); word.wordNode.appendChild(span);
         });
-
         word.enunciation = Math.round(total / word.text.length);
       }
-
       function paintLetterLevels(word, clientX, value) {
-        normalizeLetterLevels(word);
-        const textRect = word.wordNode.getBoundingClientRect();
-        const ratioX = clamp((clientX - textRect.left) / Math.max(textRect.width, 1), 0, 1);
-        const center = Math.round(ratioX * (word.text.length - 1));
+        normalizeLetterLevels(word); const textRect = word.wordNode.getBoundingClientRect(); const ratioX = clamp((clientX - textRect.left) / Math.max(textRect.width, 1), 0, 1); const center = Math.round(ratioX * (word.text.length - 1));
+        word.letterLevels = word.letterLevels.map(function (existing, idx) { const dist = Math.abs(idx - center); const influence = Math.max(0, 1 - dist / 2.2); if (influence <= 0) return existing; return Math.round(existing * (1 - influence) + value * influence); });
+      }
 
-        word.letterLevels = word.letterLevels.map(function (existing, idx) {
-          const dist = Math.abs(idx - center);
-          const influence = Math.max(0, 1 - dist / 2.2);
-          if (influence <= 0) return existing;
-          return Math.round(existing * (1 - influence) + value * influence);
+      function addPitchPoint(line, clientX, clientY) {
+        const rect = line.flow.getBoundingClientRect();
+        const localX = clamp(clientX - rect.left, 0, rect.width);
+        const localY = clamp(clientY - rect.top, 0, rect.height);
+        const minDist = mmToPx(1);
+        if (line.pitchPoints.some(function (p) { const dx = p.x * rect.width - localX; const dy = p.y * rect.height - localY; return Math.sqrt(dx * dx + dy * dy) < minDist; })) return;
+        const wordIdx = findNearestWordIndex(line, localX, rect);
+        if (wordIdx == null) return;
+        const point = { id: 'p-' + (++pitchPointSeed), x: localX / rect.width, y: localY / rect.height, wordIndex: wordIdx };
+        line.pitchPoints.push(point);
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+        line.selectedPitchPointId = point.id;
+        syncWordPitchFromPoints(line);
+        redrawPitchLine(line.lineIndex);
+      }
+
+      function removePitchPoint(line, pointId) {
+        line.pitchPoints = line.pitchPoints.filter(function (p) { return p.id !== pointId; });
+        if (line.selectedPitchPointId === pointId) line.selectedPitchPointId = null;
+        syncWordPitchFromPoints(line); redrawPitchLine(line.lineIndex);
+      }
+
+      function findNearestWordIndex(line, localX, rect) {
+        let nearest = null;
+        line.wordIndices.forEach(function (idx) {
+          const card = words[idx].card.getBoundingClientRect();
+          const center = (card.left - rect.left) + card.width / 2;
+          const dist = Math.abs(center - localX);
+          if (!nearest || dist < nearest.dist) nearest = { idx, dist };
+        });
+        return nearest ? nearest.idx : null;
+      }
+
+      function syncWordPitchFromPoints(line) {
+        line.wordIndices.forEach(function (idx) {
+          const related = line.pitchPoints.filter(function (p) { return p.wordIndex === idx; });
+          if (!related.length) return;
+          const avg = related.reduce(function (s, p) { return s + (100 - p.y * 100); }, 0) / related.length;
+          words[idx].pitch = clamp(Math.round(avg), 0, 100);
         });
       }
 
-      function redrawAllPitchLines() {
-        lines.forEach(function (line) {
-          redrawPitchLine(line.lineIndex);
-        });
-      }
-
+      function redrawAllPitchLines() { lines.forEach(function (line) { redrawPitchLine(line.lineIndex); }); }
       function redrawPitchLine(lineIndex) {
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
-        if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
+        if (!line || !line.pitchSoft || !line.pitchStrong || !line.flow || !line.wordIndices.length) return;
+        const rect = line.flow.getBoundingClientRect(); const width = Math.max(1, rect.width); const height = Math.max(1, rect.height);
+        line.pitchSvg.setAttribute('viewBox', '0 0 ' + width + ' ' + height); line.pitchSvg.setAttribute('preserveAspectRatio', 'none');
+        line.pitchSvg.style.clipPath = 'inset(0 0 0 0)';
 
-        const wrapRect = line.wordsWrap.getBoundingClientRect();
-        const width = Math.max(1, wrapRect.width);
-        const height = Math.max(1, wrapRect.height);
-        line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
-        line.pitchSvg.setAttribute("preserveAspectRatio", "none");
+        const points = (line.pitchPoints.length ? line.pitchPoints : line.wordIndices.map(function (idx) {
+          const card = words[idx].card.getBoundingClientRect();
+          return { id: 'w-' + idx, x: ((card.left - rect.left) + card.width / 2) / width, y: clamp(1 - words[idx].pitch / 100, 0, 1), wordIndex: idx };
+        })).filter(function (p) { return words[p.wordIndex] && words[p.wordIndex].lineIndex === lineIndex; })
+          .sort(function (a, b) { return a.x - b.x; });
 
-        const points = line.wordIndices.map(function (idx) {
-          const w = words[idx];
-          const cardRect = w.card.getBoundingClientRect();
-          const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-          const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-          const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-          return { x, y };
-        });
-
-        if (points.length === 1) {
-          const single = points[0];
-          const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
-          line.pitchSoft.setAttribute("d", singlePath);
-          line.pitchStrong.setAttribute("d", singlePath);
-          updatePitchGapClip(line, width, height);
-          return;
+        if (!points.length) { line.pitchSoft.setAttribute('d', ''); line.pitchStrong.setAttribute('d', ''); line.pointsGroup.innerHTML = ''; return; }
+        const mapped = points.map(function (p) { return { x: p.x * width, y: p.y * height, id: p.id, wordIndex: p.wordIndex }; });
+        let d = 'M 0 ' + mapped[0].y + ' L ' + mapped[0].x + ' ' + mapped[0].y;
+        for (let i = 1; i < mapped.length; i += 1) {
+          const prev = mapped[i - 1]; const curr = mapped[i];
+          if (words[prev.wordIndex].lineIndex !== words[curr.wordIndex].lineIndex) continue;
+          d += ' L ' + curr.x + ' ' + prev.y + ' L ' + curr.x + ' ' + curr.y;
         }
+        d += ' L ' + width + ' ' + mapped[mapped.length - 1].y;
+        line.pitchSoft.setAttribute('d', d); line.pitchStrong.setAttribute('d', d);
 
-        let d = "M " + points[0].x + " " + points[0].y;
-        for (let i = 1; i < points.length; i += 1) {
-          const prev = points[i - 1];
-          const curr = points[i];
-          const midX = (prev.x + curr.x) / 2;
-          const midY = (prev.y + curr.y) / 2;
-          d += " Q " + prev.x + " " + prev.y + " " + midX + " " + midY;
-        }
-        const last = points[points.length - 1];
-        d += " T " + last.x + " " + last.y;
-        line.pitchSoft.setAttribute("d", d);
-        line.pitchStrong.setAttribute("d", d);
-        updatePitchGapClip(line, width, height);
-      }
-
-      function updatePitchGapClip(line, width, height) {
-        while (line.clipPath.firstChild) line.clipPath.removeChild(line.clipPath.firstChild);
-
-        const gaps = getLineGapRects(line, width, height);
-        gaps.forEach(function (gap) {
-          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-          rect.setAttribute("x", String(gap.x));
-          rect.setAttribute("y", "0");
-          rect.setAttribute("width", String(gap.width));
-          rect.setAttribute("height", String(height));
-          line.clipPath.appendChild(rect);
+        line.pointsGroup.innerHTML = '';
+        if (!showPitchPoints || drawMode !== 'pitch') return;
+        mapped.forEach(function (p) {
+          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', String(p.x)); c.setAttribute('cy', String(p.y)); c.setAttribute('r', '4'); c.setAttribute('data-id', p.id); c.setAttribute('class', 'pitch-point' + (line.selectedPitchPointId === p.id ? ' selected' : ''));
+          const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t.setAttribute('x', String(p.x + 5)); t.setAttribute('y', String(Math.max(10, p.y - 6))); t.setAttribute('class', 'pitch-label'); t.textContent = pitchLabelFromY(p.y / height);
+          line.pointsGroup.append(c, t);
         });
       }
 
-      function getLineGapRects(line, width, height) {
-        const wrapRect = line.wordsWrap.getBoundingClientRect();
-        const cards = line.wordIndices.map(function (idx) { return words[idx].card; });
-        const wordRects = cards.map(function (card) {
-          const r = card.getBoundingClientRect();
-          return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, bottom: r.bottom - wrapRect.top };
-        }).sort(function (a, b) { return a.left - b.left; });
-
-        const gapRects = [];
-        let cursorX = 0;
-        wordRects.forEach(function (wr) {
-          if (wr.left > cursorX + 1) {
-            gapRects.push({ x: cursorX, width: wr.left - cursorX });
-          }
-          cursorX = Math.max(cursorX, wr.right);
-        });
-        if (cursorX < width) {
-          gapRects.push({ x: cursorX, width: width - cursorX });
-        }
-        if (!wordRects.length) {
-          gapRects.push({ x: 0, width: width, height: height });
-        }
-        return gapRects;
+      function pitchLabelFromY(normY) {
+        const notes = ['B','A','G','F','E','D','C'];
+        return notes[clamp(Math.round(normY * (notes.length - 1)),0,notes.length-1)];
       }
 
-      function clamp(value, min, max) {
-        return Math.min(max, Math.max(min, value));
-      }
-
-      function placeBreathMarker(lineIndex, clientX, clientY) {
-        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
-        if (!line || !line.wordIndices.length) return;
-        const now = Date.now();
-        if (lastBreathPlacement && (now - lastBreathPlacement.time) < 70) return;
-
-        const placement = findNearestBreathGap(line, clientX, clientY);
-        if (!placement) return;
-
-        const tooClose = line.breaths.some(function (breath) {
-          return Math.abs(breath.x - placement.x) < 10;
-        });
-        if (tooClose) return;
-
-        const breath = {
-          id: "b-" + (breathSeed += 1),
-          type: breathTypeSelect.value || "normal",
-          x: placement.x,
-          y: placement.y
-        };
+      function insertBreathAtPoint(line, clientX) {
+        const rect = line.flow.getBoundingClientRect();
+        const localX = clamp(clientX - rect.left, 0, rect.width);
+        const slot = findBreathSlot(line, localX, rect);
+        const breath = { id: 'b-' + (++breathSeed), type: breathTypeSelect.value || 'normal', slot: slot };
         line.breaths.push(breath);
-        renderBreathMarkers(line);
-        lastBreathPlacement = { time: now, lineIndex: line.lineIndex, x: placement.x };
+        renderLineFlow(line);
       }
 
-      function findNearestBreathGap(line, clientX) {
-        const wrapRect = line.wordsWrap.getBoundingClientRect();
-        const cards = line.wordIndices.map(function (idx) { return words[idx].card; });
-        if (!cards.length) return null;
-
-        const cardRects = cards.map(function (card) {
-          const r = card.getBoundingClientRect();
-          return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, height: r.height };
-        }).sort(function (a, b) { return a.left - b.left; });
-
-        const gapX = [];
-        const first = cardRects[0];
-        gapX.push(clamp(first.left - 10, 0, wrapRect.width));
-
-        for (let i = 0; i < cardRects.length - 1; i += 1) {
-          gapX.push((cardRects[i].right + cardRects[i + 1].left) / 2);
-        }
-        const last = cardRects[cardRects.length - 1];
-        gapX.push(clamp(last.right + 10, 0, wrapRect.width));
-
-        const localX = clamp(clientX - wrapRect.left, 0, wrapRect.width);
-        const nearestX = gapX.reduce(function (closest, current) {
-          return Math.abs(current - localX) < Math.abs(closest - localX) ? current : closest;
-        }, gapX[0]);
-
-        return { x: nearestX, y: first.top + (first.height * 0.55) };
+      function findBreathSlot(line, localX, rect) {
+        const centers = line.wordIndices.map(function (idx) { const r = words[idx].card.getBoundingClientRect(); return (r.left - rect.left) + r.width / 2; });
+        let slot = 0;
+        while (slot < centers.length && localX > centers[slot]) slot += 1;
+        return slot;
       }
 
-      function renderBreathMarkers(line) {
-        if (!line || !line.breathLayer) return;
-        line.breathLayer.innerHTML = "";
-        line.breaths.forEach(function (breath) {
-          const marker = document.createElement("button");
-          marker.type = "button";
-          marker.className = "breath-marker " + breath.type;
-          marker.title = breath.type.replace("-", " ");
-          marker.style.left = breath.x + "px";
-          marker.style.top = breath.y + "px";
-          marker.addEventListener("click", function (event) {
-            event.preventDefault();
-            editBreathMarker(line, breath.id);
+      function renderLineFlow(line) {
+        if (!line || !line.flow) return;
+        line.flow.innerHTML = '';
+        const grouped = {};
+        line.breaths.forEach(function (b) { if (!grouped[b.slot]) grouped[b.slot] = []; grouped[b.slot].push(b); });
+        for (let i = 0; i <= line.wordIndices.length; i += 1) {
+          (grouped[i] || []).forEach(function (breath) {
+            const block = document.createElement('button'); block.type = 'button'; block.className = 'breath-block ' + breath.type; block.dataset.type = breath.type; block.dataset.id = breath.id; block.textContent = '▢';
+            block.addEventListener('click', function (event) {
+              event.preventDefault(); event.stopPropagation();
+              const current = ['micro','quick','normal','deep','maximum'];
+              if (event.ctrlKey || event.metaKey || event.button === 2) line.breaths = line.breaths.filter(function (b) { return b.id !== breath.id; });
+              else breath.type = current[(current.indexOf(breath.type) + 1) % current.length];
+              renderLineFlow(line);
+            });
+            line.flow.appendChild(block);
           });
-          line.breathLayer.appendChild(marker);
-        });
-      }
-
-      function editBreathMarker(line, breathId) {
-        const breath = line.breaths.find(function (item) { return item.id === breathId; });
-        if (!breath) return;
-        const value = window.prompt(
-          "Breath type: micro, quick, normal, deep, maximum. Type 'delete' to remove.",
-          breath.type
-        );
-        if (value == null) return;
-        const normalized = value.trim().toLowerCase();
-        if (normalized === "delete") {
-          line.breaths = line.breaths.filter(function (item) { return item.id !== breathId; });
-        } else if (["micro", "quick", "normal", "deep", "maximum"].includes(normalized)) {
-          breath.type = normalized;
+          if (i < line.wordIndices.length) line.flow.appendChild(words[line.wordIndices[i]].card);
         }
-        renderBreathMarkers(line);
+        redrawPitchLine(line.lineIndex);
       }
 
-      function applyAboveValue(value) {
-        const normalized = (value || "").trim();
-        applyToSelected(function (w) { w.above = normalized; });
-      }
+      function renderAllLineFlows() { lines.forEach(function (line) { if (line.wordIndices && line.wordIndices.length) renderLineFlow(line); }); }
 
-      function applyBelowValue(value) {
-        const normalized = (value || "").trim();
-        applyToSelected(function (w) { w.below = normalized; });
-      }
-
-      function applyVolumeValue(value) {
-        if (value === "" || value == null) return;
-        const numeric = clamp(Number(value) || 1, 1, 10);
-        applyToSelected(function (w) { w.volume = numeric; });
-      }
-
-      function clearVolumeValue() {
-        applyToSelected(function (w) { w.volume = null; });
-      }
-
-      function volumeColor(volume) {
-        const hue = 210 - ((volume - 1) / 9) * 195;
-        return "hsl(" + hue + " 88% 58%)";
-      }
+      function applyAboveValue(value) { const normalized = (value || "").trim(); applyToSelected(function (w) { w.above = normalized; }); }
+      function applyBelowValue(value) { const normalized = (value || "").trim(); applyToSelected(function (w) { w.below = normalized; }); }
+      function volumeColor(volume) { const hue = 210 - ((volume - 1) / 9) * 195; return "hsl(" + hue + " 88% 58%)"; }
 
       function clearSelectedMarkings() {
-        applyToSelected(function (w) {
-          w.above = "";
-          w.below = "";
-          w.volume = null;
-          w.enunciation = 50;
-          w.letterLevels = Array.from({ length: w.text.length }, function () { return 50; });
-          w.pitch = 50;
-        });
+        applyToSelected(function (w) { w.above = ""; w.below = ""; w.volume = null; w.enunciation = 50; w.letterLevels = Array.from({ length: w.text.length }, function () { return 50; }); w.pitch = 50; });
+        lines.forEach(function (line) { line.pitchPoints = []; line.selectedPitchPointId = null; });
+        redrawAllPitchLines();
       }
 
       function applyWordEdit() {
         if (selectedIndices.size !== 1) return;
-        const value = editWordInput.value.trim();
-        if (!value) return;
-        const idx = Array.from(selectedIndices)[0];
-        const w = words[idx];
-        if (!w) return;
-        w.text = value;
-        w.letterLevels = Array.from({ length: w.text.length }, function () { return w.enunciation; });
-        applyWordVisual(w);
-        updateSelectionUI();
+        const value = editWordInput.value.trim(); if (!value) return;
+        const w = words[Array.from(selectedIndices)[0]]; if (!w) return;
+        w.text = value; w.letterLevels = Array.from({ length: w.text.length }, function () { return w.enunciation; }); applyWordVisual(w); updateSelectionUI();
       }
-
-      function editLyrics() {
-        composer.classList.remove("collapsed");
-      }
-
+      function editLyrics() { composer.classList.remove("collapsed"); }
       function clearMap() {
-        clearModel();
-        drawMode = null;
-        enuncModeBtn.classList.remove("active");
-        pitchModeBtn.classList.remove("active");
-        breathModeBtn.classList.remove("active");
-        lyricsInput.value = "";
-        composer.classList.remove("collapsed");
-        exportBox.textContent = "Nothing exported yet.";
-        renderEmpty("Paste lyrics and click “Generate Song Map”.");
-        updateSelectionUI();
+        clearModel(); drawMode = null; [enuncModeBtn,pitchModeBtn,breathModeBtn,volumeModeBtn].forEach(function (b) { b.classList.remove('active'); });
+        lyricsInput.value = ""; composer.classList.remove("collapsed"); exportBox.textContent = "Nothing exported yet."; renderEmpty("Paste lyrics and click “Generate Song Map”."); updateSelectionUI();
       }
 
       function exportMap() {
-        if (!words.length) {
-          exportBox.textContent = "Nothing to export yet.";
-          return;
-        }
-
+        if (!words.length) { exportBox.textContent = "Nothing to export yet."; return; }
         const chunks = [];
-
         lines.forEach(function (line) {
-          if (!line.wordIndices.length) {
-            chunks.push("");
-            return;
-          }
-
+          if (!line.wordIndices.length) { chunks.push(""); return; }
           const lineWords = line.wordIndices.map(function (idx) { return words[idx]; });
-
           const above = lineWords.map(function (w) { return w.above || "-"; }).join(" | ");
           const lyric = lineWords.map(function (w) { return w.text; }).join(" ");
           const below = lineWords.map(function (w) { return w.below || "-"; }).join(" | ");
-          const volume = lineWords.map(function (w) {
-            return w.volume == null ? "-" : String(Math.round(w.volume));
-          }).join(" | ");
+          const volume = lineWords.map(function (w) { return w.volume == null ? "-" : String(Math.round(w.volume)); }).join(" | ");
           const enunciation = lineWords.map(function (w) { return String(Math.round(w.enunciation)); }).join(" | ");
           const pitch = lineWords.map(function (w) { return String(Math.round(w.pitch)); }).join(" | ");
-          const breaths = (line.breaths || [])
-            .slice()
-            .sort(function (a, b) { return a.x - b.x; })
-            .map(function (b) { return b.type; })
-            .join(" | ") || "-";
-
+          const breaths = (line.breaths || []).slice().sort(function (a, b) { return a.slot - b.slot; }).map(function (b) { return b.type; }).join(" | ") || "-";
           chunks.push(
             "ABOVE:\n" + above + "\n\n" +
             "LYRIC:\n" + lyric + "\n\n" +
@@ -1334,57 +960,50 @@
             "BREATHS:\n" + breaths + "\n"
           );
         });
-
         exportBox.textContent = chunks.join("\n").trim() || "Nothing to export yet.";
       }
 
-      document.addEventListener("mouseup", function () {
-        isDrawing = false;
-      });
-
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") {
-          drawMode = null;
-          enuncModeBtn.classList.remove("active");
-          pitchModeBtn.classList.remove("active");
-          breathModeBtn.classList.remove("active");
+      document.addEventListener("mouseup", function () { isDrawing = false; activePitchDrag = null; activeBreathDrag = null; });
+      document.addEventListener('mousemove', function (event) {
+        if (activePitchDrag && drawMode === 'pitch') {
+          const line = lines.find(function (l) { return l.lineIndex === activePitchDrag.lineIndex; });
+          const point = line && line.pitchPoints.find(function (p) { return p.id === activePitchDrag.pointId; });
+          if (!line || !point) return;
+          const rect = line.flow.getBoundingClientRect();
+          point.x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+          point.y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+          point.wordIndex = findNearestWordIndex(line, point.x * rect.width, rect);
+          line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+          syncWordPitchFromPoints(line); redrawPitchLine(line.lineIndex);
+        }
+        if (activeBreathDrag && drawMode === 'breath') {
+          const line = lines.find(function (l) { return l.lineIndex === activeBreathDrag.lineIndex; });
+          if (!line) return;
+          const breath = line.breaths.find(function (b) { return b.id === activeBreathDrag.breathId; });
+          if (!breath) return;
+          const rect = line.flow.getBoundingClientRect();
+          breath.slot = findBreathSlot(line, clamp(event.clientX - rect.left, 0, rect.width), rect);
+          renderLineFlow(line);
         }
       });
+      document.addEventListener("keydown", function (event) { if (event.key === "Escape") setDrawMode(drawMode); });
 
-      window.addEventListener("resize", redrawAllPitchLines);
+      window.addEventListener("resize", function () { redrawAllPitchLines(); renderAllLineFlows(); });
 
       generateBtn.addEventListener("click", generateMap);
       editLyricsBtn.addEventListener("click", editLyrics);
       exportBtn.addEventListener("click", exportMap);
       clearMapBtn.addEventListener("click", clearMap);
-
-      document.getElementById("applyAbovePresetBtn").addEventListener("click", function () {
-        applyAboveValue(aboveSelect.value);
-      });
-
-      document.getElementById("applyCustomAboveBtn").addEventListener("click", function () {
-        applyAboveValue(customAbove.value);
-      });
-
-      document.getElementById("applyBelowPresetBtn").addEventListener("click", function () {
-        applyBelowValue(belowSelect.value);
-      });
-
-      document.getElementById("applyCustomBelowBtn").addEventListener("click", function () {
-        applyBelowValue(customBelow.value);
-      });
-
-      document.getElementById("applyVolumeBtn").addEventListener("click", function () {
-        applyVolumeValue(volumeInput.value);
-      });
-      document.getElementById("clearVolumeBtn").addEventListener("click", clearVolumeValue);
-
+      document.getElementById("applyAbovePresetBtn").addEventListener("click", function () { applyAboveValue(aboveSelect.value); });
+      document.getElementById("applyCustomAboveBtn").addEventListener("click", function () { applyAboveValue(customAbove.value); });
+      document.getElementById("applyBelowPresetBtn").addEventListener("click", function () { applyBelowValue(belowSelect.value); });
+      document.getElementById("applyCustomBelowBtn").addEventListener("click", function () { applyBelowValue(customBelow.value); });
       document.getElementById("clearSelectedBtn").addEventListener("click", clearSelectedMarkings);
       document.getElementById("applyWordEditBtn").addEventListener("click", applyWordEdit);
-
       enuncModeBtn.addEventListener("click", function () { setDrawMode("enunciation"); });
       pitchModeBtn.addEventListener("click", function () { setDrawMode("pitch"); });
       breathModeBtn.addEventListener("click", function () { setDrawMode("breath"); });
+      volumeModeBtn.addEventListener("click", function () { setDrawMode("volume"); });
 
       renderEmpty("Paste lyrics and click “Generate Song Map”.");
     })();
