@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Song Mapper Desktop Prototype</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --panel-2: #1f2533;
+      --line: #313a4f;
+      --text: #eff3ff;
+      --muted: #a7b1c8;
+      --accent: #78f0c2;
+      --accent-soft: rgba(120, 240, 194, 0.2);
+      --above: #9ed8ff;
+      --below: #ffc56e;
+      --warn: #ff8b8b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #141a28 0, var(--bg) 38%);
+      color: var(--text);
+      font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .app {
+      width: min(1320px, calc(100vw - 20px));
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    }
+
+    .header {
+      padding: 14px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 900;
+    }
+
+    .header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .composer {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .composer.collapsed textarea,
+    .composer.collapsed .generate-row {
+      display: none;
+    }
+
+    .topbar {
+      display: none;
+      gap: 8px;
+      align-items: center;
+      grid-template-columns: auto auto auto 1fr;
+    }
+
+    .composer.collapsed .topbar {
+      display: grid;
+    }
+
+    .song-label {
+      justify-self: end;
+      color: var(--muted);
+      border: 1px solid #3c455d;
+      border-radius: 8px;
+      background: #151b28;
+      padding: 8px 10px;
+      min-width: 220px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 170px;
+      border-radius: 10px;
+      border: 1px solid #3f4a63;
+      background: #111623;
+      color: var(--text);
+      padding: 12px;
+      font: 500 15px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      resize: vertical;
+    }
+
+    .generate-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button,
+    select,
+    input[type="text"],
+    input[type="number"] {
+      border-radius: 10px;
+      border: 1px solid #414b63;
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 14px;
+      padding: 9px 11px;
+    }
+
+    button {
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { filter: brightness(1.08); }
+
+    .danger {
+      border-color: #5d3a47;
+      color: var(--warn);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .map-wrap {
+      padding: 14px;
+      min-height: 560px;
+    }
+
+    #map {
+      min-height: 500px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .empty-state {
+      padding: 24px;
+      border: 1px dashed #3a435a;
+      border-radius: 10px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .line-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .line-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .line-handle {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 12px;
+      background: #141a27;
+      border: 1px solid #374058;
+      color: var(--muted);
+      padding: 0;
+    }
+
+    .line-handle.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+    }
+
+    .line-words {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 2px;
+      min-height: 48px;
+    }
+
+    .pitch-line-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .pitch-path {
+      stroke-width: 3.5;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 2px rgba(95, 220, 255, 0.25));
+    }
+
+    .pitch-path.soft {
+      opacity: 0.52;
+    }
+
+    .pitch-path.strong {
+      opacity: 0.96;
+    }
+
+    .pitch-point {
+      fill: #bff7ff;
+      stroke: #194866;
+      stroke-width: 1.3;
+    }
+
+    .pitch-note {
+      font-size: 10px;
+      font-weight: 800;
+      fill: #e9f4ff;
+      text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+
+    .breath-chip {
+      position: relative;
+      border-radius: 2px;
+      border: 1px solid #9ef5ff;
+      background: rgba(158, 245, 255, 0.2);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      color: #dff8ff;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1.1;
+      padding: 2px;
+    }
+
+    .breath-chip.micro {
+      width: 14px;
+      height: 14px;
+      opacity: 0.65;
+    }
+
+    .breath-chip.quick {
+      width: 18px;
+      height: 18px;
+      opacity: 0.75;
+    }
+
+    .breath-chip.normal {
+      width: 24px;
+      height: 24px;
+      opacity: 0.85;
+    }
+
+    .breath-chip.deep {
+      width: 30px;
+      height: 30px;
+      box-shadow: 0 0 0 2px rgba(158, 245, 255, 0.18);
+      opacity: 0.95;
+    }
+
+    .breath-chip.maximum {
+      width: 38px;
+      height: 38px;
+      border-width: 2px;
+      box-shadow: 0 0 0 3px rgba(158, 245, 255, 0.24);
+      opacity: 1;
+    }
+
+    .breath-token {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      border: 1px dashed #8fd6e6;
+      border-radius: 8px;
+      background: rgba(143, 214, 230, 0.08);
+      color: #bfefff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .line-break {
+      height: 14px;
+      margin-left: 42px;
+      border-top: 1px dashed #2f3750;
+      opacity: 0.8;
+    }
+
+    .word-card {
+      position: relative;
+      z-index: 2;
+      border: 1px solid #3a4359;
+      background: linear-gradient(180deg, #1b2332 0%, #171e2b 100%);
+      color: var(--text);
+      border-radius: 10px;
+      min-width: 78px;
+      max-width: 190px;
+      padding: 6px 8px 8px;
+      display: grid;
+      grid-template-rows: 22px auto 20px 16px;
+      gap: 4px;
+      user-select: none;
+    }
+
+    .word-card:hover {
+      border-color: #58627d;
+      transform: translateY(-1px);
+    }
+
+    .word-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+      background: linear-gradient(180deg, #203243, #1b2534);
+    }
+
+    .annotation {
+      min-height: 20px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.15;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 2px;
+      overflow-wrap: anywhere;
+    }
+
+    .annotation.above {
+      color: var(--above);
+      border: 1px dashed rgba(158, 216, 255, 0.35);
+      background: rgba(158, 216, 255, 0.08);
+    }
+
+    .annotation.below {
+      color: var(--below);
+      border: 1px dashed rgba(255, 197, 110, 0.35);
+      background: rgba(255, 197, 110, 0.08);
+    }
+
+    .word {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      font-size: 11px;
+      text-align: center;
+      color: #b5bed2;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .vol-bar {
+      width: 36px;
+      height: 6px;
+      border-radius: 999px;
+      border: 1px solid #4c576f;
+      background: #141a27;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .vol-fill {
+      height: 100%;
+      background: hsl(190 90% 60%);
+      width: 0%;
+    }
+
+    .vol-bar.inactive {
+      opacity: 0;
+    }
+
+    .side-panel {
+      position: sticky;
+      top: 12px;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .selection-block {
+      border: 1px solid #363f57;
+      border-radius: 10px;
+      background: #141a27;
+      padding: 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .selection-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .selection-main {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .mode-toggle.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent-soft);
+    }
+
+    .group {
+      border-top: 1px solid #353e55;
+      padding-top: 10px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .group label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #exportBox {
+      padding: 12px;
+      margin: 0;
+      min-height: 120px;
+      white-space: pre-wrap;
+      color: #d5def0;
+      font: 500 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="card header">
+      <h1>Song Mapper (Desktop)</h1>
+      <p>Fast desktop lyric markup: multi-select words, batch apply attributes, and draw enunciation/pitch with your mouse.</p>
+    </section>
+
+    <section id="composer" class="card composer">
+      <textarea id="lyricsInput" placeholder="Paste lyrics here..."></textarea>
+      <div class="generate-row">
+        <button id="generateBtn">Generate Song Map</button>
+      </div>
+
+      <div class="topbar">
+        <button id="editLyricsBtn">Edit Lyrics</button>
+        <button id="exportBtn">Export Map</button>
+        <button id="clearMapBtn" class="danger">Clear Map</button>
+        <input id="songTitle" class="song-label" type="text" placeholder="Song title / practice label" />
+      </div>
+    </section>
+
+    <section class="workspace">
+      <section class="card map-wrap">
+        <div id="map">
+          <div class="empty-state">Paste lyrics and click “Generate Song Map”.</div>
+        </div>
+      </section>
+
+      <aside class="card side-panel">
+        <div class="selection-block">
+          <div class="selection-title">Selection</div>
+          <div id="selectedSummary" class="selection-main">0 words selected</div>
+          <div id="selectedWordName" class="selection-title">No word selected</div>
+        </div>
+
+        <div class="mode-row">
+          <button id="enuncModeBtn" class="mode-toggle">Enunciation Draw</button>
+          <button id="pitchModeBtn" class="mode-toggle">Pitch Draw</button>
+          <button id="breathModeBtn" class="mode-toggle">Breath Tool</button>
+          <button id="volumeModeBtn" class="mode-toggle">Volume Tool</button>
+        </div>
+
+        <label><input id="showPitchNotesToggle" type="checkbox" checked /> Show pitch notes</label>
+
+        <div class="group">
+          <label for="aboveSelect">Vocal mode / tone (above)</label>
+          <div class="row">
+            <select id="aboveSelect">
+              <option value="">None</option>
+              <option>full voice clean</option>
+              <option>mixed voice</option>
+              <option>falsetto</option>
+              <option>breathy</option>
+              <option>grit</option>
+              <option>power scream</option>
+              <option>growl</option>
+              <option>tiny singing</option>
+              <option>belt</option>
+              <option>soft palate buzz</option>
+              <option>open vowel</option>
+            </select>
+            <button id="applyAbovePresetBtn">Apply</button>
+          </div>
+          <div class="row">
+            <input id="customAbove" type="text" placeholder="Custom above note..." />
+            <button id="applyCustomAboveBtn">Apply</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="belowSelect">Performance instruction (below)</label>
+          <div class="row">
+            <select id="belowSelect">
+              <option value="">None</option>
+              <option>support down</option>
+              <option>drop jaw</option>
+              <option>breathe</option>
+              <option>lean in</option>
+              <option>clear consonants</option>
+              <option>punch word</option>
+              <option>hold back</option>
+              <option>explode</option>
+              <option>taper off</option>
+              <option>drag timing</option>
+              <option>push timing</option>
+              <option>palate buzz</option>
+            </select>
+            <button id="applyBelowPresetBtn">Apply</button>
+          </div>
+          <div class="row">
+            <input id="customBelow" type="text" placeholder="Custom below note..." />
+            <button id="applyCustomBelowBtn">Apply</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="volumeInput">Volume (1-10)</label>
+          <div class="row">
+            <input id="volumeInput" type="number" min="1" max="10" placeholder="-" />
+            <button id="applyVolumeBtn">Apply</button>
+          </div>
+          <button id="clearVolumeBtn">Clear Volume</button>
+        </div>
+
+        <div class="group">
+          <label for="breathTypeSelect">Breath type</label>
+          <select id="breathTypeSelect">
+            <option value="micro">micro breath</option>
+            <option value="quick">quick breath</option>
+            <option value="normal" selected>normal breath</option>
+            <option value="deep">deep breath</option>
+            <option value="maximum">maximum breath potential</option>
+          </select>
+          <div id="breathDragToken" class="breath-token" draggable="true">Drag Breath Block to Line</div>
+        </div>
+
+        <div class="group">
+          <label for="editWordInput">Edit selected word text (single selection)</label>
+          <div class="row">
+            <input id="editWordInput" type="text" placeholder="Correct typo..." />
+            <button id="applyWordEditBtn">Update</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <button id="clearSelectedBtn" class="danger">Clear Selected Markings</button>
+        </div>
+      </aside>
+    </section>
+
+    <pre id="exportBox" class="card">Nothing exported yet.</pre>
+  </main>
+
+  <script>
+    (function () {
+      const composer = document.getElementById("composer");
+      const lyricsInput = document.getElementById("lyricsInput");
+      const generateBtn = document.getElementById("generateBtn");
+      const editLyricsBtn = document.getElementById("editLyricsBtn");
+      const exportBtn = document.getElementById("exportBtn");
+      const clearMapBtn = document.getElementById("clearMapBtn");
+      const map = document.getElementById("map");
+      const exportBox = document.getElementById("exportBox");
+      const selectedSummary = document.getElementById("selectedSummary");
+      const selectedWordName = document.getElementById("selectedWordName");
+      const editWordInput = document.getElementById("editWordInput");
+
+      const aboveSelect = document.getElementById("aboveSelect");
+      const belowSelect = document.getElementById("belowSelect");
+      const customAbove = document.getElementById("customAbove");
+      const customBelow = document.getElementById("customBelow");
+      const volumeInput = document.getElementById("volumeInput");
+      const breathTypeSelect = document.getElementById("breathTypeSelect");
+      const breathDragToken = document.getElementById("breathDragToken");
+      const showPitchNotesToggle = document.getElementById("showPitchNotesToggle");
+
+      const enuncModeBtn = document.getElementById("enuncModeBtn");
+      const pitchModeBtn = document.getElementById("pitchModeBtn");
+      const breathModeBtn = document.getElementById("breathModeBtn");
+      const volumeModeBtn = document.getElementById("volumeModeBtn");
+
+      let words = [];
+      let lines = [];
+      let selectedIndices = new Set();
+      let lastSelectedIndex = null;
+      let lastLineSelected = null;
+      let drawMode = null;
+      let isDrawing = false;
+      let breathSeed = 0;
+      let lastBreathPlacement = null;
+      let activePitchDrag = null;
+
+      function normalizeLyrics(text) {
+        return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+      }
+
+      function createStop(offset, color) {
+        const stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", color);
+        return stop;
+      }
+
+      function makeWordData(text, index, lineIndex) {
+        return {
+          index,
+          lineIndex,
+          text,
+          above: "",
+          below: "",
+          volume: null,
+          enunciation: 50,
+          letterLevels: [],
+          pitch: 50,
+          card: null,
+          aboveNode: null,
+          belowNode: null,
+          wordNode: null,
+          volNode: null,
+          volBarNode: null,
+          volFillNode: null
+        };
+      }
+
+      function clearModel() {
+        words = [];
+        lines = [];
+        selectedIndices = new Set();
+        lastSelectedIndex = null;
+        lastLineSelected = null;
+        lastBreathPlacement = null;
+        activePitchDrag = null;
+      }
+
+      function renderEmpty(message) {
+        map.innerHTML = "";
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = message;
+        map.appendChild(empty);
+      }
+
+      function generateMap() {
+        clearModel();
+        exportBox.textContent = "Nothing exported yet.";
+        const raw = lyricsInput.value;
+
+        if (!raw.trim()) {
+          renderEmpty("Paste lyrics and click “Generate Song Map”.");
+          return;
+        }
+
+        map.innerHTML = "";
+        const parsedLines = normalizeLyrics(raw);
+        let globalIndex = 0;
+
+        parsedLines.forEach(function (lineText, lineIndex) {
+          if (!lineText.trim()) {
+            const breakNode = document.createElement("div");
+            breakNode.className = "line-break";
+            map.appendChild(breakNode);
+            lines.push({ lineIndex, wordIndices: [], handle: null, raw: "" });
+            return;
+          }
+
+          const row = document.createElement("div");
+          row.className = "line-row";
+
+          const handle = document.createElement("button");
+          handle.type = "button";
+          handle.className = "line-handle";
+          handle.textContent = String(lineIndex + 1);
+
+          const wordsWrap = document.createElement("div");
+          wordsWrap.className = "line-words";
+          const pitchSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          pitchSvg.classList.add("pitch-line-layer");
+          const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+          const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+          const gradientId = "pitch-gradient-" + lineIndex + "-" + Date.now();
+          gradient.setAttribute("id", gradientId);
+          gradient.setAttribute("x1", "0%");
+          gradient.setAttribute("y1", "100%");
+          gradient.setAttribute("x2", "0%");
+          gradient.setAttribute("y2", "0%");
+          gradient.appendChild(createStop("0%", "#4b7bff"));
+          gradient.appendChild(createStop("50%", "#67dfff"));
+          gradient.appendChild(createStop("100%", "#ffe667"));
+
+          const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+          const clipId = "pitch-gap-clip-" + lineIndex + "-" + Date.now();
+          clipPath.setAttribute("id", clipId);
+          defs.append(gradient, clipPath);
+
+          const pitchSoft = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          pitchSoft.classList.add("pitch-path", "soft");
+          pitchSoft.setAttribute("stroke", "url(#" + gradientId + ")");
+
+          const pitchStrong = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          pitchStrong.classList.add("pitch-path", "strong");
+          pitchStrong.setAttribute("stroke", "url(#" + gradientId + ")");
+          pitchStrong.setAttribute("clip-path", "url(#" + clipId + ")");
+          const pitchPointsLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+          pitchSvg.append(defs, pitchSoft, pitchStrong, pitchPointsLayer);
+          wordsWrap.appendChild(pitchSvg);
+
+          const wordIndices = [];
+
+          lineText.trim().split(/\s+/).forEach(function (wordText) {
+            const data = makeWordData(wordText, globalIndex, lineIndex);
+            const card = createWordCard(data);
+            data.card = card;
+            words.push(data);
+            wordIndices.push(globalIndex);
+            wordsWrap.appendChild(card);
+            globalIndex += 1;
+          });
+
+          handle.addEventListener("click", function (event) {
+            handleLineSelection(lineIndex, event);
+          });
+
+          wordsWrap.addEventListener("mousedown", function (event) {
+            if (drawMode === "pitch" && (event.button === 2 || event.ctrlKey || event.metaKey)) {
+              removeNearestPitchPoint(lineIndex, event.clientX, event.clientY, 14);
+              event.preventDefault();
+              return;
+            }
+            if (drawMode === "pitch" && event.button === 0) {
+              const nearby = findNearbyPitchPoint(lineIndex, event.clientX, event.clientY, 10);
+              if (nearby) {
+                activePitchDrag = { lineIndex, pointId: nearby.id };
+              } else {
+                addPitchPoint(lineIndex, event.clientX, event.clientY);
+              }
+              event.preventDefault();
+              return;
+            }
+            if (drawMode !== "breath" || event.button !== 0) return;
+            isDrawing = true;
+            placeBreathMarker(lineIndex, event.clientX, event.clientY);
+            event.preventDefault();
+          });
+
+          wordsWrap.addEventListener("mousemove", function (event) {
+            if (!isDrawing || drawMode !== "breath") return;
+            placeBreathMarker(lineIndex, event.clientX, event.clientY);
+          });
+
+          wordsWrap.addEventListener("contextmenu", function (event) {
+            if (drawMode === "pitch") event.preventDefault();
+          });
+
+          wordsWrap.addEventListener("dragover", function (event) {
+            event.preventDefault();
+          });
+
+          wordsWrap.addEventListener("drop", function (event) {
+            event.preventDefault();
+            if (drawMode !== "breath") return;
+            const dropType = event.dataTransfer.getData("songmapper/breath-type");
+            const breathId = event.dataTransfer.getData("songmapper/breath-id");
+            if (breathId) {
+              moveBreathMarker(lineIndex, breathId, event.clientX);
+              return;
+            }
+            if (dropType) {
+              placeBreathMarker(lineIndex, event.clientX, event.clientY, dropType);
+            }
+          });
+
+          row.append(handle, wordsWrap);
+          map.appendChild(row);
+          lines.push({
+            lineIndex,
+            wordIndices,
+            handle,
+            raw: lineText,
+            wordsWrap,
+            pitchSvg,
+            pitchSoft,
+            pitchStrong,
+            pitchPointsLayer,
+            clipPath,
+            pitchPoints: [],
+            breaths: []
+          });
+        });
+
+        composer.classList.add("collapsed");
+        updateSelectionUI();
+        redrawAllPitchLines();
+      }
+
+      function createWordCard(wordData) {
+        const card = document.createElement("div");
+        card.className = "word-card";
+        card.dataset.index = String(wordData.index);
+
+        const above = document.createElement("div");
+        above.className = "annotation above";
+        above.textContent = "\u00a0";
+
+        const wordNode = document.createElement("div");
+        wordNode.className = "word";
+
+        const below = document.createElement("div");
+        below.className = "annotation below";
+        below.textContent = "\u00a0";
+
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        const volLabel = document.createElement("span");
+        volLabel.textContent = "Vol -";
+        const volBar = document.createElement("span");
+        volBar.className = "vol-bar inactive";
+        const volFill = document.createElement("span");
+        volFill.className = "vol-fill";
+        volBar.appendChild(volFill);
+        meta.append(volLabel, volBar);
+
+        card.append(above, wordNode, below, meta);
+
+        wordData.aboveNode = above;
+        wordData.belowNode = below;
+        wordData.wordNode = wordNode;
+        wordData.volNode = volLabel;
+        wordData.volBarNode = volBar;
+        wordData.volFillNode = volFill;
+
+        applyWordVisual(wordData);
+
+        card.addEventListener("click", function (event) {
+          handleWordSelection(wordData.index, event);
+        });
+
+        card.addEventListener("mousedown", function (event) {
+          if ((drawMode !== "enunciation" && drawMode !== "volume") || event.button !== 0) return;
+          isDrawing = true;
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+          event.preventDefault();
+        });
+
+        card.addEventListener("mousemove", function (event) {
+          if (!isDrawing || (drawMode !== "enunciation" && drawMode !== "volume")) return;
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+        });
+
+        card.addEventListener("dblclick", function () {
+          selectOnly(wordData.index);
+          editWordInput.value = wordData.text;
+          editWordInput.focus();
+          editWordInput.select();
+        });
+
+        return card;
+      }
+
+      function handleWordSelection(index, event) {
+        const isMultiToggle = event.ctrlKey || event.metaKey;
+        const isRange = event.shiftKey;
+
+        if (isRange && lastSelectedIndex !== null) {
+          const [start, end] = [lastSelectedIndex, index].sort(function (a, b) { return a - b; });
+          if (!isMultiToggle) selectedIndices.clear();
+          for (let i = start; i <= end; i += 1) selectedIndices.add(i);
+        } else if (isMultiToggle) {
+          if (selectedIndices.has(index)) selectedIndices.delete(index);
+          else selectedIndices.add(index);
+          lastSelectedIndex = index;
+        } else {
+          selectOnly(index);
+        }
+
+        if (isRange) lastSelectedIndex = index;
+        updateSelectionUI();
+      }
+
+      function handleLineSelection(lineIndex, event) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordIndices.length) return;
+
+        const isShift = event.shiftKey;
+        const isMulti = event.ctrlKey || event.metaKey;
+
+        if (isShift && lastLineSelected !== null) {
+          const [start, end] = [lastLineSelected, lineIndex].sort(function (a, b) { return a - b; });
+          if (!isMulti) selectedIndices.clear();
+          lines.forEach(function (item) {
+            if (item.lineIndex < start || item.lineIndex > end) return;
+            item.wordIndices.forEach(function (idx) { selectedIndices.add(idx); });
+          });
+        } else {
+          if (!isMulti) selectedIndices.clear();
+          line.wordIndices.forEach(function (idx) {
+            if (isMulti && selectedIndices.has(idx)) selectedIndices.delete(idx);
+            else selectedIndices.add(idx);
+          });
+        }
+
+        lastLineSelected = lineIndex;
+        if (line.wordIndices.length) lastSelectedIndex = line.wordIndices[line.wordIndices.length - 1];
+        updateSelectionUI();
+      }
+
+      function selectOnly(index) {
+        selectedIndices.clear();
+        selectedIndices.add(index);
+        lastSelectedIndex = index;
+      }
+
+      function updateSelectionUI() {
+        words.forEach(function (word) {
+          word.card.classList.toggle("selected", selectedIndices.has(word.index));
+        });
+
+        lines.forEach(function (line) {
+          if (!line.handle || !line.wordIndices.length) return;
+          const allSelected = line.wordIndices.every(function (idx) { return selectedIndices.has(idx); });
+          line.handle.classList.toggle("active", allSelected);
+        });
+
+        const count = selectedIndices.size;
+        if (count === 0) {
+          selectedSummary.textContent = "0 words selected";
+          selectedWordName.textContent = "No word selected";
+          editWordInput.value = "";
+          return;
+        }
+
+        if (count === 1) {
+          const selectedIndex = Array.from(selectedIndices)[0];
+          const w = words[selectedIndex];
+          selectedSummary.textContent = "1 word selected";
+          selectedWordName.textContent = "Word: " + w.text;
+          editWordInput.value = w.text;
+          return;
+        }
+
+        selectedSummary.textContent = String(count) + " words selected";
+        selectedWordName.textContent = "Batch edit active";
+        editWordInput.value = "";
+      }
+
+      function applyToSelected(fn) {
+        if (!selectedIndices.size) return;
+        selectedIndices.forEach(function (idx) {
+          const w = words[idx];
+          if (!w) return;
+          fn(w);
+          applyWordVisual(w);
+        });
+        updateSelectionUI();
+      }
+
+      function applyWordVisual(word) {
+        word.aboveNode.textContent = word.above || "\u00a0";
+        word.belowNode.textContent = word.below || "\u00a0";
+
+        normalizeLetterLevels(word);
+        renderWordLetters(word);
+
+        if (word.volume == null) {
+          word.volNode.textContent = "Vol -";
+          word.volFillNode.style.width = "0%";
+          word.volBarNode.classList.add("inactive");
+          word.card.style.background = "linear-gradient(180deg, #1b2332 0%, #171e2b 100%)";
+        } else {
+          const vol = clamp(Math.round(word.volume), 1, 10);
+          word.volNode.textContent = "Vol " + vol;
+          word.volFillNode.style.width = String(vol * 10) + "%";
+          word.volFillNode.style.background = volumeColor(vol);
+          word.volBarNode.classList.remove("inactive");
+          word.card.style.background = volumeCardBackground(vol);
+        }
+        redrawPitchLine(word.lineIndex);
+      }
+
+      function setDrawMode(mode) {
+        drawMode = drawMode === mode ? null : mode;
+        enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
+        pitchModeBtn.classList.toggle("active", drawMode === "pitch");
+        breathModeBtn.classList.toggle("active", drawMode === "breath");
+        volumeModeBtn.classList.toggle("active", drawMode === "volume");
+      }
+
+      function applyDrawAtPoint(index, clientX, clientY) {
+        const w = words[index];
+        if (!w || !w.card) return;
+        const rect = w.card.getBoundingClientRect();
+        const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
+        const value = Math.round((1 - ratio) * 100);
+
+        if (drawMode === "enunciation") {
+          paintLetterLevels(w, clientX, value);
+        } else if (drawMode === "volume") {
+          w.volume = clamp(Math.round((value / 100) * 9) + 1, 1, 10);
+        } else {
+          return;
+        }
+        applyWordVisual(w);
+      }
+
+      function normalizeLetterLevels(word) {
+        const len = word.text.length;
+        if (!len) {
+          word.letterLevels = [];
+          word.enunciation = 50;
+          return;
+        }
+        if (!Array.isArray(word.letterLevels) || word.letterLevels.length !== len) {
+          word.letterLevels = Array.from({ length: len }, function () {
+            return clamp(word.enunciation, 0, 100);
+          });
+        }
+      }
+
+      function renderWordLetters(word) {
+        word.wordNode.innerHTML = "";
+        if (!word.text.length) return;
+
+        let total = 0;
+        Array.from(word.text).forEach(function (char, idx) {
+          const level = clamp(word.letterLevels[idx], 0, 100);
+          total += level;
+
+          const span = document.createElement("span");
+          span.style.display = "inline-block";
+          span.style.transition = "font-size 60ms linear, opacity 60ms linear, transform 60ms linear";
+
+          let renderedChar = char;
+          let fontSize = 18;
+          let fontWeight = 700;
+          let opacity = 0.9;
+
+          if (level < 35) {
+            renderedChar = char.toLowerCase();
+            fontSize = 16;
+            fontWeight = 600;
+            opacity = 0.72;
+          } else if (level > 70) {
+            renderedChar = char.toUpperCase();
+            fontSize = 20;
+            fontWeight = 900;
+            opacity = 1;
+          }
+
+          span.textContent = renderedChar;
+          span.style.fontSize = String(fontSize) + "px";
+          span.style.fontWeight = String(fontWeight);
+          span.style.opacity = String(opacity);
+          span.style.transform = level > 70 ? "translateY(-0.5px)" : "none";
+          word.wordNode.appendChild(span);
+        });
+
+        word.enunciation = Math.round(total / word.text.length);
+      }
+
+      function paintLetterLevels(word, clientX, value) {
+        normalizeLetterLevels(word);
+        const textRect = word.wordNode.getBoundingClientRect();
+        const ratioX = clamp((clientX - textRect.left) / Math.max(textRect.width, 1), 0, 1);
+        const center = Math.round(ratioX * (word.text.length - 1));
+
+        word.letterLevels = word.letterLevels.map(function (existing, idx) {
+          const dist = Math.abs(idx - center);
+          const influence = Math.max(0, 1 - dist / 2.2);
+          if (influence <= 0) return existing;
+          return Math.round(existing * (1 - influence) + value * influence);
+        });
+      }
+
+      function redrawAllPitchLines() {
+        lines.forEach(function (line) {
+          redrawPitchLine(line.lineIndex);
+        });
+      }
+
+      function redrawPitchLine(lineIndex) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
+
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const width = Math.max(1, wrapRect.width);
+        const height = Math.max(1, wrapRect.height);
+        line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        line.pitchSvg.setAttribute("preserveAspectRatio", "none");
+
+        const points = getRenderedPitchPoints(line, width, height);
+        const pathData = buildSteppedPath(points, width);
+
+        line.pitchSoft.setAttribute("d", pathData);
+        line.pitchStrong.setAttribute("d", pathData);
+        renderPitchPointLabels(line, points);
+        updatePitchGapClip(line, width, height);
+      }
+
+      function addPitchPoint(lineIndex, clientX, clientY) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordsWrap) return;
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const x = clamp(clientX - wrapRect.left, 0, wrapRect.width);
+        const y = clamp(clientY - wrapRect.top, 0, wrapRect.height);
+        const minDistancePx = 4;
+        const tooClose = line.pitchPoints.some(function (pt) {
+          return Math.hypot(pt.x - x, pt.y - y) < minDistancePx;
+        });
+        if (tooClose) return;
+        const note = pitchNoteFromY(y, wrapRect.height || 1);
+
+        line.pitchPoints.push({ id: "p-" + Date.now() + "-" + Math.random().toString(16).slice(2), x, y, note });
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+        redrawPitchLine(lineIndex);
+      }
+
+      function removePitchPoint(lineIndex, pointId) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line) return;
+        line.pitchPoints = line.pitchPoints.filter(function (pt) { return pt.id !== pointId; });
+        redrawPitchLine(lineIndex);
+      }
+
+      function removeNearestPitchPoint(lineIndex, clientX, clientY, threshold) {
+        const nearby = findNearbyPitchPoint(lineIndex, clientX, clientY, threshold);
+        if (!nearby) return;
+        removePitchPoint(lineIndex, nearby.id);
+      }
+
+      function findNearbyPitchPoint(lineIndex, clientX, clientY, threshold) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordsWrap || !line.pitchPoints.length) return null;
+        const rect = line.wordsWrap.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        const limit = threshold || 10;
+        let best = null;
+        let bestDist = Infinity;
+        line.pitchPoints.forEach(function (pt) {
+          const dist = Math.hypot(pt.x - x, pt.y - y);
+          if (dist < limit && dist < bestDist) {
+            best = pt;
+            bestDist = dist;
+          }
+        });
+        return best;
+      }
+
+      function movePitchPoint(lineIndex, pointId, clientX, clientY) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordsWrap) return;
+        const point = line.pitchPoints.find(function (pt) { return pt.id === pointId; });
+        if (!point) return;
+        const rect = line.wordsWrap.getBoundingClientRect();
+        point.x = clamp(clientX - rect.left, 0, rect.width);
+        point.y = clamp(clientY - rect.top, 0, rect.height);
+        point.note = pitchNoteFromY(point.y, rect.height || 1);
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+        redrawPitchLine(lineIndex);
+      }
+
+      function pitchNoteFromY(y, height) {
+        const notes = ["C", "D", "E", "F", "G", "A", "B"];
+        const ratio = 1 - clamp(y / Math.max(height, 1), 0, 1);
+        const idx = clamp(Math.round(ratio * (notes.length - 1)), 0, notes.length - 1);
+        return notes[idx];
+      }
+
+      function getRenderedPitchPoints(line, width, height) {
+        const points = (line.pitchPoints || [])
+          .slice()
+          .sort(function (a, b) { return a.x - b.x; })
+          .map(function (pt) {
+            return { id: pt.id, x: clamp(pt.x, 0, width), y: clamp(pt.y, 0, height), note: pt.note };
+          });
+
+        if (!points.length) {
+          const midY = height * 0.5;
+          return [
+            { x: 0, y: midY, note: "4" },
+            { x: width, y: midY, note: "4" }
+          ];
+        }
+
+        const first = points[0];
+        const last = points[points.length - 1];
+        if (first.x > 0) points.unshift({ x: 0, y: first.y, note: first.note });
+        if (last.x < width) points.push({ x: width, y: last.y, note: last.note });
+        return points;
+      }
+
+      function buildSteppedPath(points) {
+        if (!points.length) return "";
+        let d = "M " + points[0].x + " " + points[0].y;
+        for (let i = 1; i < points.length; i += 1) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const midX = (prev.x + curr.x) / 2;
+          d += " L " + midX + " " + prev.y;
+          d += " L " + curr.x + " " + curr.y;
+        }
+        return d;
+      }
+
+      function renderPitchPointLabels(line, points) {
+        if (!line.pitchPointsLayer) return;
+        line.pitchPointsLayer.innerHTML = "";
+        points.forEach(function (pt) {
+          if (!pt.id) return;
+          const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          dot.setAttribute("class", "pitch-point");
+          dot.setAttribute("cx", String(pt.x));
+          dot.setAttribute("cy", String(pt.y));
+          dot.setAttribute("r", "4");
+          dot.style.cursor = drawMode === "pitch" ? "grab" : "default";
+
+          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          label.setAttribute("class", "pitch-note");
+          label.setAttribute("x", String(pt.x + 4));
+          label.setAttribute("y", String(pt.y - 8));
+          label.textContent = pt.note;
+          label.style.display = showPitchNotesToggle.checked ? "block" : "none";
+
+          line.pitchPointsLayer.append(dot, label);
+        });
+      }
+
+      function updatePitchGapClip(line, width, height) {
+        while (line.clipPath.firstChild) line.clipPath.removeChild(line.clipPath.firstChild);
+
+        const gaps = getLineGapRects(line, width, height);
+        gaps.forEach(function (gap) {
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", String(gap.x));
+          rect.setAttribute("y", "0");
+          rect.setAttribute("width", String(gap.width));
+          rect.setAttribute("height", String(height));
+          line.clipPath.appendChild(rect);
+        });
+      }
+
+      function getLineGapRects(line, width, height) {
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const cards = line.wordIndices.map(function (idx) { return words[idx].card; });
+        const wordRects = cards.map(function (card) {
+          const r = card.getBoundingClientRect();
+          return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, bottom: r.bottom - wrapRect.top };
+        }).sort(function (a, b) { return a.left - b.left; });
+
+        const gapRects = [];
+        let cursorX = 0;
+        wordRects.forEach(function (wr) {
+          if (wr.left > cursorX + 1) {
+            gapRects.push({ x: cursorX, width: wr.left - cursorX });
+          }
+          cursorX = Math.max(cursorX, wr.right);
+        });
+        if (cursorX < width) {
+          gapRects.push({ x: cursorX, width: width - cursorX });
+        }
+        if (!wordRects.length) {
+          gapRects.push({ x: 0, width: width, height: height });
+        }
+        return gapRects;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function placeBreathMarker(lineIndex, clientX, clientY, breathType) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordIndices.length) return;
+        const now = Date.now();
+        if (lastBreathPlacement && (now - lastBreathPlacement.time) < 70) return;
+
+        const placement = findNearestBreathGap(line, clientX);
+        if (!placement) return;
+
+        const tooClose = line.breaths.some(function (breath) {
+          return breath.gapIndex === placement.gapIndex;
+        });
+        if (tooClose) return;
+
+        const breath = {
+          id: "b-" + (breathSeed += 1),
+          type: breathType || breathTypeSelect.value || "normal",
+          gapIndex: placement.gapIndex
+        };
+        line.breaths.push(breath);
+        renderBreathMarkers(line);
+        lastBreathPlacement = { time: now, lineIndex: line.lineIndex, gapIndex: placement.gapIndex };
+      }
+
+      function findNearestBreathGap(line, clientX) {
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const cards = line.wordIndices.map(function (idx) { return words[idx].card; });
+        if (!cards.length) return null;
+
+        const cardRects = cards.map(function (card) {
+          const r = card.getBoundingClientRect();
+          return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, height: r.height };
+        }).sort(function (a, b) { return a.left - b.left; });
+
+        const gapX = [];
+        const first = cardRects[0];
+        gapX.push({ x: clamp(first.left - 10, 0, wrapRect.width), gapIndex: 0 });
+
+        for (let i = 0; i < cardRects.length - 1; i += 1) {
+          gapX.push({ x: (cardRects[i].right + cardRects[i + 1].left) / 2, gapIndex: i + 1 });
+        }
+        const last = cardRects[cardRects.length - 1];
+        gapX.push({ x: clamp(last.right + 10, 0, wrapRect.width), gapIndex: cardRects.length });
+
+        const localX = clamp(clientX - wrapRect.left, 0, wrapRect.width);
+        const nearest = gapX.reduce(function (closest, current) {
+          return Math.abs(current.x - localX) < Math.abs(closest.x - localX) ? current : closest;
+        }, gapX[0]);
+
+        return nearest;
+      }
+
+      function renderBreathMarkers(line) {
+        if (!line || !line.wordsWrap) return;
+        const cardsByIndex = line.wordIndices.map(function (idx) { return words[idx].card; });
+        line.wordsWrap.innerHTML = "";
+        line.wordsWrap.appendChild(line.pitchSvg);
+
+        const breathsByGap = new Map();
+        line.breaths.forEach(function (b) {
+          const key = b.gapIndex;
+          if (!breathsByGap.has(key)) breathsByGap.set(key, []);
+          breathsByGap.get(key).push(b);
+        });
+
+        for (let gap = 0; gap <= cardsByIndex.length; gap += 1) {
+          const breathItems = breathsByGap.get(gap) || [];
+          breathItems.forEach(function (breath) {
+            const marker = document.createElement("button");
+            marker.type = "button";
+            marker.className = "breath-chip " + breath.type;
+            marker.draggable = true;
+            marker.title = breath.type + " breath";
+            marker.textContent = breath.type;
+            marker.addEventListener("dragstart", function (event) {
+              event.dataTransfer.setData("songmapper/breath-id", breath.id);
+            });
+            marker.addEventListener("click", function (event) {
+              event.preventDefault();
+              editBreathMarker(line, breath.id);
+            });
+            line.wordsWrap.appendChild(marker);
+          });
+          if (gap < cardsByIndex.length) line.wordsWrap.appendChild(cardsByIndex[gap]);
+        }
+        redrawPitchLine(line.lineIndex);
+      }
+
+      function moveBreathMarker(targetLineIndex, breathId, clientX) {
+        let sourceLine = null;
+        let targetBreath = null;
+        lines.forEach(function (line) {
+          const found = line.breaths.find(function (b) { return b.id === breathId; });
+          if (found) {
+            sourceLine = line;
+            targetBreath = found;
+          }
+        });
+        if (!sourceLine || !targetBreath) return;
+        sourceLine.breaths = sourceLine.breaths.filter(function (b) { return b.id !== breathId; });
+        renderBreathMarkers(sourceLine);
+
+        const targetLine = lines.find(function (line) { return line.lineIndex === targetLineIndex; });
+        if (!targetLine) return;
+        const placement = findNearestBreathGap(targetLine, clientX);
+        if (!placement) return;
+        targetBreath.gapIndex = placement.gapIndex;
+        targetLine.breaths.push(targetBreath);
+        renderBreathMarkers(targetLine);
+      }
+
+      function editBreathMarker(line, breathId) {
+        const breath = line.breaths.find(function (item) { return item.id === breathId; });
+        if (!breath) return;
+        const value = window.prompt(
+          "Breath type: micro, quick, normal, deep, maximum. Type 'delete' to remove.",
+          breath.type
+        );
+        if (value == null) return;
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "delete") {
+          line.breaths = line.breaths.filter(function (item) { return item.id !== breathId; });
+        } else if (["micro", "quick", "normal", "deep", "maximum"].includes(normalized)) {
+          breath.type = normalized;
+        }
+        renderBreathMarkers(line);
+      }
+
+      function applyAboveValue(value) {
+        const normalized = (value || "").trim();
+        applyToSelected(function (w) { w.above = normalized; });
+      }
+
+      function applyBelowValue(value) {
+        const normalized = (value || "").trim();
+        applyToSelected(function (w) { w.below = normalized; });
+      }
+
+      function applyVolumeValue(value) {
+        if (value === "" || value == null) return;
+        const numeric = clamp(Number(value) || 1, 1, 10);
+        applyToSelected(function (w) { w.volume = numeric; });
+      }
+
+      function clearVolumeValue() {
+        applyToSelected(function (w) { w.volume = null; });
+      }
+
+      function volumeColor(volume) {
+        const hue = 210 - ((volume - 1) / 9) * 195;
+        return "hsl(" + hue + " 88% 58%)";
+      }
+
+      function volumeCardBackground(volume) {
+        const hue = 205 - ((volume - 1) / 9) * 25;
+        const light = 84 - ((volume - 1) / 9) * 58;
+        return "linear-gradient(180deg, hsl(" + hue + " 85% " + light + "% / 0.92), #172030)";
+      }
+
+      function clearSelectedMarkings() {
+        applyToSelected(function (w) {
+          w.above = "";
+          w.below = "";
+          w.volume = null;
+          w.enunciation = 50;
+          w.letterLevels = Array.from({ length: w.text.length }, function () { return 50; });
+          w.pitch = 50;
+        });
+      }
+
+      function applyWordEdit() {
+        if (selectedIndices.size !== 1) return;
+        const value = editWordInput.value.trim();
+        if (!value) return;
+        const idx = Array.from(selectedIndices)[0];
+        const w = words[idx];
+        if (!w) return;
+        w.text = value;
+        w.letterLevels = Array.from({ length: w.text.length }, function () { return w.enunciation; });
+        applyWordVisual(w);
+        updateSelectionUI();
+      }
+
+      function editLyrics() {
+        composer.classList.remove("collapsed");
+      }
+
+      function clearMap() {
+        clearModel();
+        drawMode = null;
+        enuncModeBtn.classList.remove("active");
+        pitchModeBtn.classList.remove("active");
+        breathModeBtn.classList.remove("active");
+        volumeModeBtn.classList.remove("active");
+        lyricsInput.value = "";
+        composer.classList.remove("collapsed");
+        exportBox.textContent = "Nothing exported yet.";
+        renderEmpty("Paste lyrics and click “Generate Song Map”.");
+        updateSelectionUI();
+      }
+
+      function exportMap() {
+        if (!words.length) {
+          exportBox.textContent = "Nothing to export yet.";
+          return;
+        }
+
+        const chunks = [];
+
+        lines.forEach(function (line) {
+          if (!line.wordIndices.length) {
+            chunks.push("");
+            return;
+          }
+
+          const lineWords = line.wordIndices.map(function (idx) { return words[idx]; });
+
+          const above = lineWords.map(function (w) { return w.above || "-"; }).join(" | ");
+          const lyric = lineWords.map(function (w) { return w.text; }).join(" ");
+          const below = lineWords.map(function (w) { return w.below || "-"; }).join(" | ");
+          const volume = lineWords.map(function (w) {
+            return w.volume == null ? "-" : String(Math.round(w.volume));
+          }).join(" | ");
+          const enunciation = lineWords.map(function (w) { return String(Math.round(w.enunciation)); }).join(" | ");
+          const pitch = lineWords.map(function (w) { return String(Math.round(w.pitch)); }).join(" | ");
+          const breaths = (line.breaths || [])
+            .slice()
+            .sort(function (a, b) { return a.gapIndex - b.gapIndex; })
+            .map(function (b) { return b.type; })
+            .join(" | ") || "-";
+
+          chunks.push(
+            "ABOVE:\n" + above + "\n\n" +
+            "LYRIC:\n" + lyric + "\n\n" +
+            "BELOW:\n" + below + "\n\n" +
+            "VOLUME:\n" + volume + "\n\n" +
+            "ENUNCIATION:\n" + enunciation + "\n\n" +
+            "PITCH RANGE:\n" + pitch + "\n\n" +
+            "BREATHS:\n" + breaths + "\n"
+          );
+        });
+
+        exportBox.textContent = chunks.join("\n").trim() || "Nothing to export yet.";
+      }
+
+      document.addEventListener("mouseup", function () {
+        isDrawing = false;
+        activePitchDrag = null;
+      });
+
+      document.addEventListener("mousemove", function (event) {
+        if (!activePitchDrag || drawMode !== "pitch") return;
+        movePitchPoint(activePitchDrag.lineIndex, activePitchDrag.pointId, event.clientX, event.clientY);
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          drawMode = null;
+          enuncModeBtn.classList.remove("active");
+          pitchModeBtn.classList.remove("active");
+          breathModeBtn.classList.remove("active");
+          volumeModeBtn.classList.remove("active");
+          activePitchDrag = null;
+        }
+      });
+
+      window.addEventListener("resize", redrawAllPitchLines);
+
+      generateBtn.addEventListener("click", generateMap);
+      editLyricsBtn.addEventListener("click", editLyrics);
+      exportBtn.addEventListener("click", exportMap);
+      clearMapBtn.addEventListener("click", clearMap);
+
+      document.getElementById("applyAbovePresetBtn").addEventListener("click", function () {
+        applyAboveValue(aboveSelect.value);
+      });
+
+      document.getElementById("applyCustomAboveBtn").addEventListener("click", function () {
+        applyAboveValue(customAbove.value);
+      });
+
+      document.getElementById("applyBelowPresetBtn").addEventListener("click", function () {
+        applyBelowValue(belowSelect.value);
+      });
+
+      document.getElementById("applyCustomBelowBtn").addEventListener("click", function () {
+        applyBelowValue(customBelow.value);
+      });
+
+      document.getElementById("applyVolumeBtn").addEventListener("click", function () {
+        applyVolumeValue(volumeInput.value);
+      });
+      document.getElementById("clearVolumeBtn").addEventListener("click", clearVolumeValue);
+
+      document.getElementById("clearSelectedBtn").addEventListener("click", clearSelectedMarkings);
+      document.getElementById("applyWordEditBtn").addEventListener("click", applyWordEdit);
+
+      enuncModeBtn.addEventListener("click", function () { setDrawMode("enunciation"); });
+      pitchModeBtn.addEventListener("click", function () { setDrawMode("pitch"); });
+      breathModeBtn.addEventListener("click", function () { setDrawMode("breath"); });
+      volumeModeBtn.addEventListener("click", function () { setDrawMode("volume"); });
+      showPitchNotesToggle.addEventListener("change", redrawAllPitchLines);
+
+      breathDragToken.addEventListener("dragstart", function (event) {
+        event.dataTransfer.setData("songmapper/breath-type", breathTypeSelect.value || "normal");
+      });
+
+      renderEmpty("Paste lyrics and click “Generate Song Map”.");
+    })();
+  </script>
+</body>
+</html>
