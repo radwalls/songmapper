@@ -227,6 +227,14 @@
       opacity: 0.96;
     }
 
+    .pitch-point {
+      fill: #9af2ff;
+      stroke: #163243;
+      stroke-width: 1.5;
+      cursor: pointer;
+      pointer-events: all;
+    }
+
     .breath-layer {
       position: absolute;
       inset: 0;
@@ -345,13 +353,9 @@
     }
 
     .meta {
-      font-size: 11px;
-      text-align: center;
-      color: #b5bed2;
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 8px;
     }
 
     .vol-bar {
@@ -606,6 +610,8 @@
       let lastLineSelected = null;
       let drawMode = null;
       let isDrawing = false;
+      let activePitchDrag = null;
+      let pitchPointSeed = 0;
       let breathSeed = 0;
       let lastBreathPlacement = null;
 
@@ -742,15 +748,34 @@
           });
 
           wordsWrap.addEventListener("mousedown", function (event) {
-            if (drawMode !== "breath" || event.button !== 0) return;
-            isDrawing = true;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
-            event.preventDefault();
+            if (drawMode === "pitch") {
+              handlePitchMouseDown(lineIndex, event);
+              return;
+            }
+            if (drawMode === "breath" && event.button === 0) {
+              isDrawing = true;
+              placeBreathMarker(lineIndex, event.clientX, event.clientY);
+              event.preventDefault();
+            }
           });
 
           wordsWrap.addEventListener("mousemove", function (event) {
+            if (drawMode === "pitch") {
+              handlePitchMouseMove(lineIndex, event);
+              return;
+            }
             if (!isDrawing || drawMode !== "breath") return;
             placeBreathMarker(lineIndex, event.clientX, event.clientY);
+          });
+
+          wordsWrap.addEventListener("contextmenu", function (event) {
+            if (drawMode !== "pitch") return;
+            const line = getLine(lineIndex);
+            if (!line) return;
+            const target = findPitchPointTarget(line, event.target);
+            if (!target) return;
+            event.preventDefault();
+            deletePitchPoint(line, target.point.id);
           });
 
           row.append(handle, wordsWrap);
@@ -765,6 +790,7 @@
             pitchSoft,
             pitchStrong,
             clipPath,
+            pitchPoints: [],
             breaths: [],
             breathLayer
           });
@@ -772,7 +798,7 @@
 
         composer.classList.add("collapsed");
         updateSelectionUI();
-        redrawAllPitchLines();
+        syncPitchLayerVisibility();
       }
 
       function createWordCard(wordData) {
@@ -793,21 +819,19 @@
 
         const meta = document.createElement("div");
         meta.className = "meta";
-        const volLabel = document.createElement("span");
-        volLabel.textContent = "Vol -";
         const volBar = document.createElement("span");
         volBar.className = "vol-bar inactive";
         const volFill = document.createElement("span");
         volFill.className = "vol-fill";
         volBar.appendChild(volFill);
-        meta.append(volLabel, volBar);
+        meta.append(volBar);
 
         card.append(above, wordNode, below, meta);
 
         wordData.aboveNode = above;
         wordData.belowNode = below;
         wordData.wordNode = wordNode;
-        wordData.volNode = volLabel;
+        wordData.volNode = null;
         wordData.volBarNode = volBar;
         wordData.volFillNode = volFill;
 
@@ -818,14 +842,14 @@
         });
 
         card.addEventListener("mousedown", function (event) {
-          if (!drawMode || drawMode === "breath" || event.button !== 0) return;
+          if (drawMode !== "enunciation" || event.button !== 0) return;
           isDrawing = true;
           applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
           event.preventDefault();
         });
 
         card.addEventListener("mousemove", function (event) {
-          if (!isDrawing || !drawMode || drawMode === "breath") return;
+          if (!isDrawing || drawMode !== "enunciation") return;
           applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
         });
 
@@ -944,24 +968,36 @@
         renderWordLetters(word);
 
         if (word.volume == null) {
-          word.volNode.textContent = "Vol -";
           word.volFillNode.style.width = "0%";
           word.volBarNode.classList.add("inactive");
         } else {
           const vol = clamp(Math.round(word.volume), 1, 10);
-          word.volNode.textContent = "Vol " + vol;
           word.volFillNode.style.width = String(vol * 10) + "%";
           word.volFillNode.style.background = volumeColor(vol);
           word.volBarNode.classList.remove("inactive");
         }
-        redrawPitchLine(word.lineIndex);
+        if (isPitchToolActive()) redrawPitchLine(word.lineIndex);
+      }
+
+      function isPitchToolActive() {
+        return drawMode === "pitch";
+      }
+
+      function syncPitchLayerVisibility() {
+        lines.forEach(function (line) {
+          if (!line || !line.pitchSvg) return;
+          line.pitchSvg.style.display = isPitchToolActive() ? "block" : "none";
+        });
       }
 
       function setDrawMode(mode) {
         drawMode = drawMode === mode ? null : mode;
+        activePitchDrag = null;
         enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
         pitchModeBtn.classList.toggle("active", drawMode === "pitch");
         breathModeBtn.classList.toggle("active", drawMode === "breath");
+        syncPitchLayerVisibility();
+        if (isPitchToolActive()) redrawAllPitchLines();
       }
 
       function applyDrawAtPoint(index, clientX, clientY) {
@@ -973,10 +1009,103 @@
 
         if (drawMode === "enunciation") {
           paintLetterLevels(w, clientX, value);
-        } else if (drawMode === "pitch") {
-          w.pitch = value;
         }
         applyWordVisual(w);
+      }
+
+      function getLine(lineIndex) {
+        return lines.find(function (item) { return item.lineIndex === lineIndex; });
+      }
+
+      function findPitchPointTarget(line, target) {
+        if (!line || !target || !target.closest) return null;
+        const pointNode = target.closest(".pitch-point");
+        if (!pointNode) return null;
+        const pointId = pointNode.dataset.pitchPointId;
+        if (!pointId) return null;
+        const point = line.pitchPoints.find(function (item) { return item.id === pointId; });
+        if (!point) return null;
+        return { point, pointNode };
+      }
+
+      function getLocalPointPosition(line, clientX, clientY) {
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        return {
+          x: clamp(clientX - wrapRect.left, 0, wrapRect.width),
+          y: clamp(clientY - wrapRect.top, 0, wrapRect.height),
+          width: Math.max(1, wrapRect.width),
+          height: Math.max(1, wrapRect.height)
+        };
+      }
+
+      function canCreatePitchPoint(line, x, y, ignoredPointId) {
+        const minSpacingPx = 4;
+        return !line.pitchPoints.some(function (item) {
+          if (ignoredPointId && item.id === ignoredPointId) return false;
+          const dx = item.x - x;
+          const dy = item.y - y;
+          return Math.sqrt((dx * dx) + (dy * dy)) < minSpacingPx;
+        });
+      }
+
+      function createPitchPoint(line, x, y) {
+        if (!canCreatePitchPoint(line, x, y)) return null;
+        const point = { id: "p-" + (pitchPointSeed += 1), x, y };
+        line.pitchPoints.push(point);
+        sortLinePitchPoints(line);
+        return point;
+      }
+
+      function sortLinePitchPoints(line) {
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+      }
+
+      function deletePitchPoint(line, pointId) {
+        line.pitchPoints = line.pitchPoints.filter(function (point) { return point.id !== pointId; });
+        redrawPitchLine(line.lineIndex);
+      }
+
+      function handlePitchMouseDown(lineIndex, event) {
+        if (event.button !== 0 && event.button !== 2) return;
+        const line = getLine(lineIndex);
+        if (!line || !line.wordsWrap) return;
+        const target = findPitchPointTarget(line, event.target);
+
+        if (event.button === 2 || (event.button === 0 && event.ctrlKey)) {
+          if (target) {
+            deletePitchPoint(line, target.point.id);
+            event.preventDefault();
+          }
+          return;
+        }
+
+        if (event.button !== 0) return;
+        const local = getLocalPointPosition(line, event.clientX, event.clientY);
+        let point = target ? target.point : createPitchPoint(line, local.x, local.y);
+        if (!point) return;
+        if (!target) {
+          point.x = local.x;
+          point.y = local.y;
+          sortLinePitchPoints(line);
+        }
+
+        activePitchDrag = { lineIndex: line.lineIndex, pointId: point.id };
+        redrawPitchLine(line.lineIndex);
+        event.preventDefault();
+      }
+
+      function handlePitchMouseMove(lineIndex, event) {
+        if (!activePitchDrag || activePitchDrag.lineIndex !== lineIndex || (event.buttons & 1) !== 1) return;
+        const line = getLine(lineIndex);
+        if (!line) return;
+        const point = line.pitchPoints.find(function (item) { return item.id === activePitchDrag.pointId; });
+        if (!point) return;
+        const local = getLocalPointPosition(line, event.clientX, event.clientY);
+        point.x = local.x;
+        point.y = local.y;
+        sortLinePitchPoints(line);
+        redrawPitchLine(line.lineIndex);
+        event.preventDefault();
       }
 
       function normalizeLetterLevels(word) {
@@ -1049,12 +1178,14 @@
       }
 
       function redrawAllPitchLines() {
+        if (!isPitchToolActive()) return;
         lines.forEach(function (line) {
           redrawPitchLine(line.lineIndex);
         });
       }
 
       function redrawPitchLine(lineIndex) {
+        if (!isPitchToolActive()) return;
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
         if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
 
@@ -1064,14 +1195,16 @@
         line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
 
-        const points = line.wordIndices.map(function (idx) {
-          const w = words[idx];
-          const cardRect = w.card.getBoundingClientRect();
-          const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-          const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-          const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-          return { x, y };
-        });
+        const points = (line.pitchPoints && line.pitchPoints.length)
+          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
+          : line.wordIndices.map(function (idx) {
+            const w = words[idx];
+            const cardRect = w.card.getBoundingClientRect();
+            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
+            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
+            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
+            return { x, y };
+          });
 
         if (points.length === 1) {
           const single = points[0];
@@ -1079,6 +1212,7 @@
           line.pitchSoft.setAttribute("d", singlePath);
           line.pitchStrong.setAttribute("d", singlePath);
           updatePitchGapClip(line, width, height);
+          renderPitchPoints(line);
           return;
         }
 
@@ -1095,6 +1229,25 @@
         line.pitchSoft.setAttribute("d", d);
         line.pitchStrong.setAttribute("d", d);
         updatePitchGapClip(line, width, height);
+        renderPitchPoints(line);
+      }
+
+      function renderPitchPoints(line) {
+        if (!line || !line.pitchSvg) return;
+        const existing = line.pitchSvg.querySelector(".pitch-points");
+        if (existing) existing.remove();
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("class", "pitch-points");
+        (line.pitchPoints || []).forEach(function (point) {
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", String(point.x));
+          circle.setAttribute("cy", String(point.y));
+          circle.setAttribute("r", "4.2");
+          circle.setAttribute("class", "pitch-point");
+          circle.setAttribute("data-pitch-point-id", point.id);
+          group.appendChild(circle);
+        });
+        line.pitchSvg.appendChild(group);
       }
 
       function updatePitchGapClip(line, width, height) {
@@ -1284,6 +1437,7 @@
       function clearMap() {
         clearModel();
         drawMode = null;
+        activePitchDrag = null;
         enuncModeBtn.classList.remove("active");
         pitchModeBtn.classList.remove("active");
         breathModeBtn.classList.remove("active");
@@ -1340,14 +1494,17 @@
 
       document.addEventListener("mouseup", function () {
         isDrawing = false;
+        activePitchDrag = null;
       });
 
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
           drawMode = null;
+          activePitchDrag = null;
           enuncModeBtn.classList.remove("active");
           pitchModeBtn.classList.remove("active");
           breathModeBtn.classList.remove("active");
+          syncPitchLayerVisibility();
         }
       });
 
