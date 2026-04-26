@@ -465,13 +465,13 @@
     <section id="composer" class="card composer">
       <textarea id="lyricsInput" placeholder="Paste lyrics here..."></textarea>
       <div class="generate-row">
-        <button id="generateBtn">Generate Song Map</button>
+        <button id="generateBtn" type="button">Generate Song Map</button>
       </div>
 
       <div class="topbar">
-        <button id="editLyricsBtn">Edit Lyrics</button>
-        <button id="exportBtn">Export Map</button>
-        <button id="clearMapBtn" class="danger">Clear Map</button>
+        <button id="editLyricsBtn" type="button">Edit Lyrics</button>
+        <button id="exportBtn" type="button">Export Map</button>
+        <button id="clearMapBtn" type="button" class="danger">Clear Map</button>
         <input id="songTitle" class="song-label" type="text" placeholder="Song title / practice label" />
       </div>
     </section>
@@ -1559,7 +1559,10 @@
 
       window.addEventListener("resize", redrawAllPitchLines);
 
-      generateBtn.addEventListener("click", generateMap);
+      generateBtn.addEventListener("click", function (event) {
+        event.preventDefault();
+        generateMap();
+      });
       editLyricsBtn.addEventListener("click", editLyrics);
       exportBtn.addEventListener("click", exportMap);
       clearMapBtn.addEventListener("click", clearMap);
