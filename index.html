@@ -772,7 +772,7 @@
 
         composer.classList.add("collapsed");
         updateSelectionUI();
-        redrawAllPitchLines();
+        syncPitchLayerVisibility();
       }
 
       function createWordCard(wordData) {
@@ -954,7 +954,18 @@
           word.volFillNode.style.background = volumeColor(vol);
           word.volBarNode.classList.remove("inactive");
         }
-        redrawPitchLine(word.lineIndex);
+        if (isPitchToolActive()) redrawPitchLine(word.lineIndex);
+      }
+
+      function isPitchToolActive() {
+        return drawMode === "pitch";
+      }
+
+      function syncPitchLayerVisibility() {
+        lines.forEach(function (line) {
+          if (!line || !line.pitchSvg) return;
+          line.pitchSvg.style.display = isPitchToolActive() ? "block" : "none";
+        });
       }
 
       function setDrawMode(mode) {
@@ -962,6 +973,8 @@
         enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
         pitchModeBtn.classList.toggle("active", drawMode === "pitch");
         breathModeBtn.classList.toggle("active", drawMode === "breath");
+        syncPitchLayerVisibility();
+        if (isPitchToolActive()) redrawAllPitchLines();
       }
 
       function applyDrawAtPoint(index, clientX, clientY) {
@@ -1049,12 +1062,14 @@
       }
 
       function redrawAllPitchLines() {
+        if (!isPitchToolActive()) return;
         lines.forEach(function (line) {
           redrawPitchLine(line.lineIndex);
         });
       }
 
       function redrawPitchLine(lineIndex) {
+        if (!isPitchToolActive()) return;
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
         if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
 
@@ -1348,6 +1363,7 @@
           enuncModeBtn.classList.remove("active");
           pitchModeBtn.classList.remove("active");
           breathModeBtn.classList.remove("active");
+          syncPitchLayerVisibility();
         }
       });
 
