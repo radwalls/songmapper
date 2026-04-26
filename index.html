@@ -688,6 +688,7 @@
         }
 
         map.innerHTML = "";
+        composer.classList.add("collapsed");
         const parsedLines = normalizeLyrics(raw);
         let globalIndex = 0;
 
@@ -744,12 +745,13 @@
 
           const wordIndices = [];
 
-          lineText.trim().split(/\s+/).forEach(function (wordText) {
+          (lineText.trim().match(/\S+/g) || []).forEach(function (wordText) {
             const data = makeWordData(wordText, globalIndex, lineIndex);
             const card = createWordCard(data);
             data.card = card;
             words.push(data);
             wordIndices.push(globalIndex);
+            wordsWrap.appendChild(card);
             globalIndex += 1;
           });
 
@@ -817,7 +819,11 @@
           layoutLineFlow(lineObj);
         });
 
-        composer.classList.add("collapsed");
+        if (!words.length) {
+          composer.classList.remove("collapsed");
+          renderEmpty("No lyric words were found. Add lyrics and try again.");
+          return;
+        }
         updateSelectionUI();
         redrawAllPitchLines();
       }
@@ -927,6 +933,7 @@
 
       function updateSelectionUI() {
         words.forEach(function (word) {
+          if (!word.card) return;
           word.card.classList.toggle("selected", selectedIndices.has(word.index));
         });
 
