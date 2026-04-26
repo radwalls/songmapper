@@ -817,9 +817,13 @@
           layoutLineFlow(lineObj);
         });
 
-        composer.classList.add("collapsed");
+        if (!words.length) {
+          renderEmpty("No lyric words were found. Add lyrics and try again.");
+          return;
+        }
         updateSelectionUI();
         redrawAllPitchLines();
+        composer.classList.add("collapsed");
       }
 
       function createWordCard(wordData) {
@@ -927,6 +931,7 @@
 
       function updateSelectionUI() {
         words.forEach(function (word) {
+          if (!word.card) return;
           word.card.classList.toggle("selected", selectedIndices.has(word.index));
         });
 
@@ -1249,7 +1254,11 @@
 
       function getLineGapRects(line, width, height) {
         const wrapRect = line.wordsWrap.getBoundingClientRect();
-        const cards = line.wordIndices.map(function (idx) { return words[idx].card; });
+        const cards = line.wordIndices
+          .map(function (idx) {
+            return words[idx] ? words[idx].card : null;
+          })
+          .filter(Boolean);
         const wordRects = cards.map(function (card) {
           const r = card.getBoundingClientRect();
           return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, bottom: r.bottom - wrapRect.top };
@@ -1336,7 +1345,8 @@
             line.wordsWrap.appendChild(createBreathNode(line, breath));
           });
           if (slot < line.wordIndices.length) {
-            line.wordsWrap.appendChild(words[line.wordIndices[slot]].card);
+            const word = words[line.wordIndices[slot]];
+            if (word && word.card) line.wordsWrap.appendChild(word.card);
           }
         }
       }
