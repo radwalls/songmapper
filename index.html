@@ -604,7 +604,7 @@
       let selectedIndices = new Set();
       let lastSelectedIndex = null;
       let lastLineSelected = null;
-      let drawMode = null;
+      let activeTool = null;
       let isDrawing = false;
       let breathSeed = 0;
       let lastBreathPlacement = null;
@@ -742,14 +742,14 @@
           });
 
           wordsWrap.addEventListener("mousedown", function (event) {
-            if (drawMode !== "breath" || event.button !== 0) return;
+            if (!isToolActive("breath") || event.button !== 0) return;
             isDrawing = true;
             placeBreathMarker(lineIndex, event.clientX, event.clientY);
             event.preventDefault();
           });
 
           wordsWrap.addEventListener("mousemove", function (event) {
-            if (!isDrawing || drawMode !== "breath") return;
+            if (!isDrawing || !isToolActive("breath")) return;
             placeBreathMarker(lineIndex, event.clientX, event.clientY);
           });
 
@@ -818,15 +818,17 @@
         });
 
         card.addEventListener("mousedown", function (event) {
-          if (!drawMode || drawMode === "breath" || event.button !== 0) return;
+          if (event.button !== 0) return;
+          if (!isToolActive("enunciation") && !isToolActive("pitch")) return;
           isDrawing = true;
-          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY, activeTool);
           event.preventDefault();
         });
 
         card.addEventListener("mousemove", function (event) {
-          if (!isDrawing || !drawMode || drawMode === "breath") return;
-          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+          if (!isDrawing) return;
+          if (!isToolActive("enunciation") && !isToolActive("pitch")) return;
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY, activeTool);
         });
 
         card.addEventListener("dblclick", function () {
@@ -957,24 +959,42 @@
         redrawPitchLine(word.lineIndex);
       }
 
-      function setDrawMode(mode) {
-        drawMode = drawMode === mode ? null : mode;
-        enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
-        pitchModeBtn.classList.toggle("active", drawMode === "pitch");
-        breathModeBtn.classList.toggle("active", drawMode === "breath");
+      function isToolActive(tool) {
+        return activeTool === tool;
       }
 
-      function applyDrawAtPoint(index, clientX, clientY) {
+      function clearActiveInteractionState() {
+        isDrawing = false;
+      }
+
+      function updateToolButtons() {
+        enuncModeBtn.classList.toggle("active", isToolActive("enunciation"));
+        pitchModeBtn.classList.toggle("active", isToolActive("pitch"));
+        breathModeBtn.classList.toggle("active", isToolActive("breath"));
+      }
+
+      function setActiveTool(tool) {
+        const nextTool = activeTool === tool ? null : tool;
+        if (nextTool !== activeTool) {
+          clearActiveInteractionState();
+        }
+        activeTool = nextTool;
+        updateToolButtons();
+      }
+
+      function applyDrawAtPoint(index, clientX, clientY, tool) {
         const w = words[index];
         if (!w || !w.card) return;
         const rect = w.card.getBoundingClientRect();
         const ratio = clamp((clientY - rect.top) / rect.height, 0, 1);
         const value = Math.round((1 - ratio) * 100);
 
-        if (drawMode === "enunciation") {
+        if (tool === "enunciation" && isToolActive("enunciation")) {
           paintLetterLevels(w, clientX, value);
-        } else if (drawMode === "pitch") {
+        } else if (tool === "pitch" && isToolActive("pitch")) {
           w.pitch = value;
+        } else {
+          return;
         }
         applyWordVisual(w);
       }
@@ -1283,10 +1303,9 @@
 
       function clearMap() {
         clearModel();
-        drawMode = null;
-        enuncModeBtn.classList.remove("active");
-        pitchModeBtn.classList.remove("active");
-        breathModeBtn.classList.remove("active");
+        activeTool = null;
+        clearActiveInteractionState();
+        updateToolButtons();
         lyricsInput.value = "";
         composer.classList.remove("collapsed");
         exportBox.textContent = "Nothing exported yet.";
@@ -1344,10 +1363,9 @@
 
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
-          drawMode = null;
-          enuncModeBtn.classList.remove("active");
-          pitchModeBtn.classList.remove("active");
-          breathModeBtn.classList.remove("active");
+          activeTool = null;
+          clearActiveInteractionState();
+          updateToolButtons();
         }
       });
 
@@ -1382,9 +1400,9 @@
       document.getElementById("clearSelectedBtn").addEventListener("click", clearSelectedMarkings);
       document.getElementById("applyWordEditBtn").addEventListener("click", applyWordEdit);
 
-      enuncModeBtn.addEventListener("click", function () { setDrawMode("enunciation"); });
-      pitchModeBtn.addEventListener("click", function () { setDrawMode("pitch"); });
-      breathModeBtn.addEventListener("click", function () { setDrawMode("breath"); });
+      enuncModeBtn.addEventListener("click", function () { setActiveTool("enunciation"); });
+      pitchModeBtn.addEventListener("click", function () { setActiveTool("pitch"); });
+      breathModeBtn.addEventListener("click", function () { setActiveTool("breath"); });
 
       renderEmpty("Paste lyrics and click “Generate Song Map”.");
     })();
