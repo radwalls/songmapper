@@ -26,11 +26,10 @@
       background: radial-gradient(circle at top, #141a28 0, var(--bg) 38%);
       color: var(--text);
       font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-      min-width: 1200px;
     }
 
     .app {
-      width: 1320px;
+      width: min(1400px, 100%);
       margin: 0 auto;
       padding: 18px;
       display: grid;
@@ -140,6 +139,7 @@
       grid-template-columns: minmax(0, 1fr) 360px;
       gap: 12px;
       align-items: start;
+      min-width: 0;
     }
 
     .map-wrap {
@@ -194,13 +194,12 @@
     .line-words {
       position: relative;
       display: flex;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
       align-items: flex-start;
       gap: 6px;
       padding: 2px;
       min-height: 48px;
-      overflow-x: auto;
-      overflow-y: hidden;
+      overflow: visible;
     }
 
     .pitch-line-layer {
@@ -233,6 +232,14 @@
       fill: #bff7ff;
       stroke: #194866;
       stroke-width: 1.3;
+      cursor: pointer;
+    }
+
+    .pitch-point.selected {
+      r: 5;
+      fill: #ffe667;
+      stroke: #735f0a;
+      stroke-width: 1.8;
     }
 
     .pitch-note {
@@ -243,51 +250,51 @@
       pointer-events: none;
     }
 
-    .breath-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 4;
-    }
-
     .breath-marker {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
       border: 1px solid #9ef5ff;
       background: rgba(158, 245, 255, 0.2);
+      cursor: grab;
+      user-select: none;
       pointer-events: auto;
-      cursor: pointer;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: #e8fcff;
+      z-index: 2;
     }
 
     .breath-marker.micro {
-      width: 14px;
-      height: 14px;
+      min-width: 24px;
+      height: 20px;
       opacity: 0.65;
     }
 
     .breath-marker.quick {
-      width: 18px;
-      height: 18px;
+      min-width: 32px;
+      height: 22px;
       opacity: 0.75;
     }
 
     .breath-marker.normal {
-      width: 24px;
+      min-width: 42px;
       height: 24px;
       opacity: 0.85;
     }
 
     .breath-marker.deep {
-      width: 30px;
-      height: 30px;
+      min-width: 52px;
+      height: 28px;
       box-shadow: 0 0 0 2px rgba(158, 245, 255, 0.18);
       opacity: 0.95;
     }
 
     .breath-marker.maximum {
-      width: 38px;
-      height: 38px;
+      min-width: 66px;
+      height: 32px;
       border-width: 2px;
       box-shadow: 0 0 0 3px rgba(158, 245, 255, 0.24);
       opacity: 1;
@@ -379,10 +386,15 @@
       font-size: 11px;
       text-align: center;
       color: #b5bed2;
-      display: flex;
+      display: none;
       justify-content: center;
       align-items: center;
       gap: 8px;
+    }
+
+    .word-card.has-volume {
+      border-color: #82b9cf;
+      box-shadow: inset 0 0 0 999px var(--volume-tint, transparent);
     }
 
     .vol-bar {
@@ -411,6 +423,8 @@
       padding: 14px;
       display: grid;
       gap: 10px;
+      max-height: calc(100vh - 24px);
+      overflow: auto;
     }
 
     .selection-block {
@@ -437,8 +451,12 @@
 
     .mode-row {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
+    }
+
+    .mode-row .mode-toggle:last-child {
+      grid-column: span 2;
     }
 
     .mode-toggle.active {
@@ -473,6 +491,16 @@
       white-space: pre-wrap;
       color: #d5def0;
       font: 500 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    @media (max-width: 1260px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .side-panel {
+        position: static;
+        max-height: none;
+      }
     }
   </style>
 </head>
@@ -515,6 +543,7 @@
           <button id="enuncModeBtn" class="mode-toggle">Enunciation Draw</button>
           <button id="pitchModeBtn" class="mode-toggle">Pitch Draw</button>
           <button id="breathModeBtn" class="mode-toggle">Breath Tool</button>
+          <button id="volumeModeBtn" class="mode-toggle">Volume Paint</button>
         </div>
 
         <div class="group">
@@ -569,12 +598,14 @@
         </div>
 
         <div class="group">
-          <label for="volumeInput">Volume (1-10)</label>
-          <div class="row">
-            <input id="volumeInput" type="number" min="1" max="10" placeholder="-" />
-            <button id="applyVolumeBtn">Apply</button>
-          </div>
+          <label for="volumePaintInput">Volume paint value (1-10)</label>
+          <input id="volumePaintInput" type="range" min="1" max="10" value="6" />
           <button id="clearVolumeBtn">Clear Volume</button>
+        </div>
+
+        <div class="group">
+          <label for="pitchVisibleToggle">Pitch notes visibility</label>
+          <button id="pitchVisibleToggle" type="button">Hide Pitch Notes</button>
         </div>
 
         <div class="group">
@@ -624,13 +655,15 @@
       const belowSelect = document.getElementById("belowSelect");
       const customAbove = document.getElementById("customAbove");
       const customBelow = document.getElementById("customBelow");
-      const volumeInput = document.getElementById("volumeInput");
+      const volumePaintInput = document.getElementById("volumePaintInput");
       const breathTypeSelect = document.getElementById("breathTypeSelect");
       const breathDragToken = document.getElementById("breathDragToken");
+      const pitchVisibleToggle = document.getElementById("pitchVisibleToggle");
 
       const enuncModeBtn = document.getElementById("enuncModeBtn");
       const pitchModeBtn = document.getElementById("pitchModeBtn");
       const breathModeBtn = document.getElementById("breathModeBtn");
+      const volumeModeBtn = document.getElementById("volumeModeBtn");
 
       let words = [];
       let lines = [];
@@ -639,8 +672,11 @@
       let lastLineSelected = null;
       let drawMode = null;
       let isDrawing = false;
+      let isDraggingPitchPoint = false;
+      let activePitchDrag = null;
       let breathSeed = 0;
       let lastBreathPlacement = null;
+      let pitchVisible = true;
 
       function normalizeLyrics(text) {
         return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -755,10 +791,6 @@
 
           pitchSvg.append(defs, pitchSoft, pitchStrong, pitchPointsLayer);
           wordsWrap.appendChild(pitchSvg);
-          const breathLayer = document.createElement("div");
-          breathLayer.className = "breath-layer";
-          wordsWrap.appendChild(breathLayer);
-
           const wordIndices = [];
 
           lineText.trim().split(/\s+/).forEach(function (wordText) {
@@ -776,20 +808,22 @@
           });
 
           wordsWrap.addEventListener("mousedown", function (event) {
+            if (drawMode === "pitch" && event.button === 2) {
+              removeNearestPitchPoint(lineIndex, event.clientX, event.clientY);
+              event.preventDefault();
+              return;
+            }
             if (drawMode === "pitch" && event.button === 0) {
               addPitchPoint(lineIndex, event.clientX, event.clientY);
               event.preventDefault();
               return;
             }
             if (drawMode !== "breath" || event.button !== 0) return;
-            isDrawing = true;
             placeBreathMarker(lineIndex, event.clientX, event.clientY);
             event.preventDefault();
           });
-
-          wordsWrap.addEventListener("mousemove", function (event) {
-            if (!isDrawing || drawMode !== "breath") return;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
+          wordsWrap.addEventListener("contextmenu", function (event) {
+            if (drawMode === "pitch") event.preventDefault();
           });
 
           wordsWrap.addEventListener("dragover", function (event) {
@@ -825,7 +859,7 @@
             clipPath,
             pitchPoints: [],
             breaths: [],
-            breathLayer
+            draggingBreathId: null
           });
         });
 
@@ -883,9 +917,21 @@
           event.preventDefault();
         });
 
+        card.addEventListener("mousedown", function (event) {
+          if (drawMode !== "volume" || event.button !== 0) return;
+          isDrawing = true;
+          applyVolumePaint(wordData.index);
+          event.preventDefault();
+        });
+
         card.addEventListener("mousemove", function (event) {
           if (!isDrawing || drawMode !== "enunciation") return;
           applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+        });
+
+        card.addEventListener("mousemove", function () {
+          if (!isDrawing || drawMode !== "volume") return;
+          applyVolumePaint(wordData.index);
         });
 
         card.addEventListener("dblclick", function () {
@@ -1003,15 +1049,12 @@
         renderWordLetters(word);
 
         if (word.volume == null) {
-          word.volNode.textContent = "Vol -";
-          word.volFillNode.style.width = "0%";
-          word.volBarNode.classList.add("inactive");
+          word.card.classList.remove("has-volume");
+          word.card.style.removeProperty("--volume-tint");
         } else {
           const vol = clamp(Math.round(word.volume), 1, 10);
-          word.volNode.textContent = "Vol " + vol;
-          word.volFillNode.style.width = String(vol * 10) + "%";
-          word.volFillNode.style.background = volumeColor(vol);
-          word.volBarNode.classList.remove("inactive");
+          word.card.classList.add("has-volume");
+          word.card.style.setProperty("--volume-tint", volumeTint(vol));
         }
         redrawPitchLine(word.lineIndex);
       }
@@ -1021,6 +1064,7 @@
         enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
         pitchModeBtn.classList.toggle("active", drawMode === "pitch");
         breathModeBtn.classList.toggle("active", drawMode === "breath");
+        volumeModeBtn.classList.toggle("active", drawMode === "volume");
       }
 
       function applyDrawAtPoint(index, clientX, clientY) {
@@ -1135,11 +1179,34 @@
         const wrapRect = line.wordsWrap.getBoundingClientRect();
         const x = clamp(clientX - wrapRect.left, 0, wrapRect.width);
         const y = clamp(clientY - wrapRect.top, 0, wrapRect.height);
+        const minDistancePx = 4;
+        const tooClose = line.pitchPoints.some(function (pt) {
+          const dx = pt.x - x;
+          const dy = pt.y - y;
+          return Math.sqrt((dx * dx) + (dy * dy)) < minDistancePx;
+        });
+        if (tooClose) return;
         const note = pitchNoteFromY(y, wrapRect.height || 1);
 
-        line.pitchPoints.push({ id: "p-" + Date.now() + "-" + Math.random().toString(16).slice(2), x, y, note });
+        line.pitchPoints.push({ id: "p-" + Date.now() + "-" + Math.random().toString(16).slice(2), x, y, note, selected: false });
         line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
         redrawPitchLine(lineIndex);
+      }
+
+      function removeNearestPitchPoint(lineIndex, clientX, clientY) {
+        const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
+        if (!line || !line.wordsWrap || !line.pitchPoints.length) return;
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const x = clamp(clientX - wrapRect.left, 0, wrapRect.width);
+        const y = clamp(clientY - wrapRect.top, 0, wrapRect.height);
+        const nearest = line.pitchPoints.reduce(function (best, pt) {
+          const d = Math.hypot(pt.x - x, pt.y - y);
+          if (!best || d < best.distance) return { id: pt.id, distance: d };
+          return best;
+        }, null);
+        if (nearest && nearest.distance <= 12) {
+          removePitchPoint(lineIndex, nearest.id);
+        }
       }
 
       function removePitchPoint(lineIndex, pointId) {
@@ -1195,17 +1262,29 @@
       function renderPitchPointLabels(line, points) {
         if (!line.pitchPointsLayer) return;
         line.pitchPointsLayer.innerHTML = "";
+        line.pitchSvg.style.display = pitchVisible ? "block" : "none";
+        if (!pitchVisible) return;
         points.forEach(function (pt) {
           if (!pt.id) return;
           const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          dot.setAttribute("class", "pitch-point");
+          dot.setAttribute("class", "pitch-point" + (pt.selected ? " selected" : ""));
           dot.setAttribute("cx", String(pt.x));
           dot.setAttribute("cy", String(pt.y));
           dot.setAttribute("r", "4");
-          dot.style.cursor = "pointer";
-          dot.addEventListener("click", function (event) {
+          dot.addEventListener("mousedown", function (event) {
+            if (event.button === 2 || event.ctrlKey) {
+              removePitchPoint(line.lineIndex, pt.id);
+              event.stopPropagation();
+              event.preventDefault();
+              return;
+            }
+            if (event.button !== 0) return;
+            line.pitchPoints.forEach(function (entry) { entry.selected = entry.id === pt.id; });
+            activePitchDrag = { lineIndex: line.lineIndex, pointId: pt.id };
+            isDraggingPitchPoint = true;
+            redrawPitchLine(line.lineIndex);
+            event.stopPropagation();
             event.preventDefault();
-            removePitchPoint(line.lineIndex, pt.id);
           });
 
           const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1271,19 +1350,19 @@
         if (!placement) return;
 
         const tooClose = line.breaths.some(function (breath) {
-          return Math.abs(breath.x - placement.x) < 10;
+          return breath.gapIndex === placement.gapIndex;
         });
         if (tooClose) return;
 
         const breath = {
           id: "b-" + (breathSeed += 1),
           type: breathType || breathTypeSelect.value || "normal",
-          x: placement.x,
-          y: placement.y
+          gapIndex: placement.gapIndex
         };
         line.breaths.push(breath);
+        line.breaths.sort(function (a, b) { return a.gapIndex - b.gapIndex; });
         renderBreathMarkers(line);
-        lastBreathPlacement = { time: now, lineIndex: line.lineIndex, x: placement.x };
+        lastBreathPlacement = { time: now, lineIndex: line.lineIndex, gapIndex: placement.gapIndex };
       }
 
       function findNearestBreathGap(line, clientX) {
@@ -1296,34 +1375,29 @@
           return { left: r.left - wrapRect.left, right: r.right - wrapRect.left, top: r.top - wrapRect.top, height: r.height };
         }).sort(function (a, b) { return a.left - b.left; });
 
-        const gapX = [];
-        const first = cardRects[0];
-        gapX.push(clamp(first.left - 10, 0, wrapRect.width));
+        const gapX = [{ gapIndex: 0, x: clamp(cardRects[0].left - 10, 0, wrapRect.width) }];
 
         for (let i = 0; i < cardRects.length - 1; i += 1) {
-          gapX.push((cardRects[i].right + cardRects[i + 1].left) / 2);
+          gapX.push({ gapIndex: i + 1, x: (cardRects[i].right + cardRects[i + 1].left) / 2 });
         }
-        const last = cardRects[cardRects.length - 1];
-        gapX.push(clamp(last.right + 10, 0, wrapRect.width));
+        gapX.push({ gapIndex: cardRects.length, x: clamp(cardRects[cardRects.length - 1].right + 10, 0, wrapRect.width) });
 
         const localX = clamp(clientX - wrapRect.left, 0, wrapRect.width);
-        const nearestX = gapX.reduce(function (closest, current) {
-          return Math.abs(current - localX) < Math.abs(closest - localX) ? current : closest;
+        return gapX.reduce(function (closest, current) {
+          return Math.abs(current.x - localX) < Math.abs(closest.x - localX) ? current : closest;
         }, gapX[0]);
-
-        return { x: nearestX, y: first.top + (first.height * 0.55) };
       }
 
       function renderBreathMarkers(line) {
-        if (!line || !line.breathLayer) return;
-        line.breathLayer.innerHTML = "";
-        line.breaths.forEach(function (breath) {
+        if (!line || !line.wordsWrap) return;
+        line.wordsWrap.querySelectorAll(".breath-marker").forEach(function (node) { node.remove(); });
+        line.breaths.sort(function (a, b) { return a.gapIndex - b.gapIndex; }).forEach(function (breath) {
           const marker = document.createElement("button");
           marker.type = "button";
           marker.className = "breath-marker " + breath.type;
           marker.title = breath.type.replace("-", " ");
-          marker.style.left = breath.x + "px";
-          marker.style.top = breath.y + "px";
+          marker.style.order = String((breath.gapIndex * 2) + 1);
+          marker.textContent = breath.type;
           marker.draggable = true;
           marker.addEventListener("dragstart", function (event) {
             event.dataTransfer.setData("songmapper/breath-id", breath.id);
@@ -1332,7 +1406,11 @@
             event.preventDefault();
             editBreathMarker(line, breath.id);
           });
-          line.breathLayer.appendChild(marker);
+          line.wordsWrap.appendChild(marker);
+        });
+        line.wordIndices.forEach(function (wordIndex, idx) {
+          const card = words[wordIndex].card;
+          if (card) card.style.order = String(idx * 2);
         });
       }
 
@@ -1354,8 +1432,7 @@
         if (!targetLine) return;
         const placement = findNearestBreathGap(targetLine, clientX);
         if (!placement) return;
-        targetBreath.x = placement.x;
-        targetBreath.y = placement.y;
+        targetBreath.gapIndex = placement.gapIndex;
         targetLine.breaths.push(targetBreath);
         renderBreathMarkers(targetLine);
       }
@@ -1393,6 +1470,14 @@
         applyToSelected(function (w) { w.volume = numeric; });
       }
 
+      function applyVolumePaint(index) {
+        const w = words[index];
+        if (!w) return;
+        const numeric = clamp(Number(volumePaintInput.value) || 1, 1, 10);
+        w.volume = numeric;
+        applyWordVisual(w);
+      }
+
       function clearVolumeValue() {
         applyToSelected(function (w) { w.volume = null; });
       }
@@ -1400,6 +1485,11 @@
       function volumeColor(volume) {
         const hue = 210 - ((volume - 1) / 9) * 195;
         return "hsl(" + hue + " 88% 58%)";
+      }
+
+      function volumeTint(volume) {
+        const hue = 210 - ((volume - 1) / 9) * 195;
+        return "hsla(" + hue + " 88% 58% / 0.28)";
       }
 
       function clearSelectedMarkings() {
@@ -1436,6 +1526,7 @@
         enuncModeBtn.classList.remove("active");
         pitchModeBtn.classList.remove("active");
         breathModeBtn.classList.remove("active");
+        volumeModeBtn.classList.remove("active");
         lyricsInput.value = "";
         composer.classList.remove("collapsed");
         exportBox.textContent = "Nothing exported yet.";
@@ -1469,7 +1560,7 @@
           const pitch = lineWords.map(function (w) { return String(Math.round(w.pitch)); }).join(" | ");
           const breaths = (line.breaths || [])
             .slice()
-            .sort(function (a, b) { return a.x - b.x; })
+            .sort(function (a, b) { return a.gapIndex - b.gapIndex; })
             .map(function (b) { return b.type; })
             .join(" | ") || "-";
 
@@ -1489,6 +1580,22 @@
 
       document.addEventListener("mouseup", function () {
         isDrawing = false;
+        isDraggingPitchPoint = false;
+        activePitchDrag = null;
+      });
+
+      document.addEventListener("mousemove", function (event) {
+        if (!isDraggingPitchPoint || !activePitchDrag) return;
+        const line = lines.find(function (item) { return item.lineIndex === activePitchDrag.lineIndex; });
+        if (!line || !line.wordsWrap) return;
+        const point = line.pitchPoints.find(function (item) { return item.id === activePitchDrag.pointId; });
+        if (!point) return;
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        point.x = clamp(event.clientX - wrapRect.left, 0, wrapRect.width);
+        point.y = clamp(event.clientY - wrapRect.top, 0, wrapRect.height);
+        point.note = pitchNoteFromY(point.y, wrapRect.height || 1);
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+        redrawPitchLine(line.lineIndex);
       });
 
       document.addEventListener("keydown", function (event) {
@@ -1497,6 +1604,7 @@
           enuncModeBtn.classList.remove("active");
           pitchModeBtn.classList.remove("active");
           breathModeBtn.classList.remove("active");
+          volumeModeBtn.classList.remove("active");
         }
       });
 
@@ -1523,9 +1631,6 @@
         applyBelowValue(customBelow.value);
       });
 
-      document.getElementById("applyVolumeBtn").addEventListener("click", function () {
-        applyVolumeValue(volumeInput.value);
-      });
       document.getElementById("clearVolumeBtn").addEventListener("click", clearVolumeValue);
 
       document.getElementById("clearSelectedBtn").addEventListener("click", clearSelectedMarkings);
@@ -1534,6 +1639,13 @@
       enuncModeBtn.addEventListener("click", function () { setDrawMode("enunciation"); });
       pitchModeBtn.addEventListener("click", function () { setDrawMode("pitch"); });
       breathModeBtn.addEventListener("click", function () { setDrawMode("breath"); });
+      volumeModeBtn.addEventListener("click", function () { setDrawMode("volume"); });
+
+      pitchVisibleToggle.addEventListener("click", function () {
+        pitchVisible = !pitchVisible;
+        pitchVisibleToggle.textContent = pitchVisible ? "Hide Pitch Notes" : "Show Pitch Notes";
+        redrawAllPitchLines();
+      });
 
       breathDragToken.addEventListener("dragstart", function (event) {
         event.dataTransfer.setData("songmapper/breath-type", breathTypeSelect.value || "normal");
