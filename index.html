@@ -201,18 +201,16 @@
       min-height: 48px;
     }
 
-    .line-words.music-mode {
-      padding-left: 52px;
-    }
-
     .music-roll {
       position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 46px;
-      border-right: 1px solid rgba(150, 205, 255, 0.2);
-      background: linear-gradient(180deg, rgba(41, 73, 112, 0.2), rgba(21, 34, 58, 0.15));
+      left: 6px;
+      top: 4px;
+      width: 40px;
+      min-height: 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(146, 195, 245, 0.24);
+      background: rgba(17, 30, 49, 0.55);
+      backdrop-filter: blur(1px);
       pointer-events: none;
       z-index: 1;
       display: none;
@@ -222,9 +220,11 @@
       position: absolute;
       right: 4px;
       transform: translateY(-50%);
-      font-size: 9px;
-      color: rgba(182, 223, 255, 0.78);
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(210, 237, 255, 0.92);
       white-space: nowrap;
+      text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
     }
 
     .pitch-line-layer {
@@ -897,16 +897,16 @@
           clipPath.setAttribute("id", clipId);
           defs.append(gradient, clipPath);
 
-          const pitchSoft = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchSoft.classList.add("pitch-path", "soft");
-          pitchSoft.setAttribute("stroke", "url(#" + gradientId + ")");
+          const pitchSoftGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          pitchSoftGroup.classList.add("pitch-soft-group");
+          pitchSoftGroup.setAttribute("stroke", "url(#" + gradientId + ")");
 
-          const pitchStrong = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchStrong.classList.add("pitch-path", "strong");
-          pitchStrong.setAttribute("stroke", "url(#" + gradientId + ")");
-          pitchStrong.setAttribute("clip-path", "url(#" + clipId + ")");
+          const pitchStrongGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          pitchStrongGroup.classList.add("pitch-strong-group");
+          pitchStrongGroup.setAttribute("stroke", "url(#" + gradientId + ")");
+          pitchStrongGroup.setAttribute("clip-path", "url(#" + clipId + ")");
 
-          pitchSvg.append(defs, pitchSoft, pitchStrong);
+          pitchSvg.append(defs, pitchSoftGroup, pitchStrongGroup);
           wordsWrap.appendChild(pitchSvg);
           const breathLayer = document.createElement("div");
           breathLayer.className = "breath-layer";
@@ -969,8 +969,8 @@
             wordsWrap,
             musicRoll,
             pitchSvg,
-            pitchSoft,
-            pitchStrong,
+            pitchSoftGroup,
+            pitchStrongGroup,
             clipPath,
             pitchPoints: [],
             breaths: [],
@@ -1170,7 +1170,6 @@
           if (!line || !line.pitchSvg) return;
           const showPitchLayer = isPitchToolActive();
           line.pitchSvg.style.display = showPitchLayer ? "block" : "none";
-          if (line.wordsWrap) line.wordsWrap.classList.toggle("music-mode", showPitchLayer && trueMusicMode);
           if (line.musicRoll) line.musicRoll.style.display = (showPitchLayer && trueMusicMode) ? "block" : "none";
         });
       }
@@ -1386,7 +1385,7 @@
       function redrawPitchLine(lineIndex) {
         if (!isPitchToolActive()) return;
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
-        if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
+        if (!line || !line.pitchSoftGroup || !line.pitchStrongGroup || !line.wordsWrap || !line.wordIndices.length) return;
 
         const wrapRect = line.wordsWrap.getBoundingClientRect();
         const width = Math.max(1, wrapRect.width);
@@ -1394,28 +1393,100 @@
         line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
+        const rowPointSets = getPitchRows(line, wrapRect);
+        renderPitchPathRows(line.pitchSoftGroup, rowPointSets, "soft");
+        renderPitchPathRows(line.pitchStrongGroup, rowPointSets, "strong");
+        updatePitchGapClip(line, width, height);
+        renderPitchPoints(line, height);
+      }
 
-        const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
-          : line.wordIndices.map(function (idx) {
-            const w = words[idx];
-            const cardRect = w.card.getBoundingClientRect();
-            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
+      function getPitchRows(line, wrapRect) {
+        const rowBands = getVisualRowBands(line, wrapRect);
+        if (!rowBands.length) return [];
+
+        if (line.pitchPoints && line.pitchPoints.length) {
+          const rows = rowBands.map(function () { return []; });
+          line.pitchPoints.forEach(function (point) {
+            const rowIndex = nearestRowIndex(point.y, rowBands);
+            rows[rowIndex].push({ x: point.x, y: point.y });
           });
-
-        if (points.length === 1) {
-          const single = points[0];
-          const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
-          line.pitchSoft.setAttribute("d", singlePath);
-          line.pitchStrong.setAttribute("d", singlePath);
-          updatePitchGapClip(line, width, height);
-          renderPitchPoints(line, height);
-          return;
+          return rows
+            .map(function (points) {
+              return points.slice().sort(function (a, b) { return a.x - b.x; });
+            })
+            .filter(function (points) { return points.length; });
         }
 
+        const rows = rowBands.map(function () { return []; });
+        line.wordIndices.forEach(function (idx) {
+          const w = words[idx];
+          const cardRect = w.card.getBoundingClientRect();
+          const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
+          const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
+          const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
+          const rowIndex = nearestRowIndex((cardRect.top - wrapRect.top) + (cardRect.height / 2), rowBands);
+          rows[rowIndex].push({ x, y });
+        });
+        return rows.filter(function (points) { return points.length; });
+      }
+
+      function getVisualRowBands(line, wrapRect) {
+        const bands = [];
+        line.wordIndices.forEach(function (idx) {
+          const card = words[idx] && words[idx].card;
+          if (!card) return;
+          const r = card.getBoundingClientRect();
+          const top = r.top - wrapRect.top;
+          const bottom = r.bottom - wrapRect.top;
+          const middle = top + ((bottom - top) / 2);
+          let target = null;
+          for (let i = 0; i < bands.length; i += 1) {
+            if (Math.abs(bands[i].mid - middle) < 8) {
+              target = bands[i];
+              break;
+            }
+          }
+          if (!target) {
+            target = { top, bottom, mid: middle };
+            bands.push(target);
+          } else {
+            target.top = Math.min(target.top, top);
+            target.bottom = Math.max(target.bottom, bottom);
+            target.mid = target.top + ((target.bottom - target.top) / 2);
+          }
+        });
+        return bands.sort(function (a, b) { return a.top - b.top; });
+      }
+
+      function nearestRowIndex(y, rowBands) {
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        rowBands.forEach(function (band, idx) {
+          const distance = Math.abs(band.mid - y);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = idx;
+          }
+        });
+        return bestIndex;
+      }
+
+      function renderPitchPathRows(group, rowPointSets, strengthClass) {
+        while (group.firstChild) group.removeChild(group.firstChild);
+        rowPointSets.forEach(function (points) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", buildPitchPath(points));
+          path.setAttribute("class", "pitch-path " + strengthClass);
+          group.appendChild(path);
+        });
+      }
+
+      function buildPitchPath(points) {
+        if (!points.length) return "";
+        if (points.length === 1) {
+          const single = points[0];
+          return "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
+        }
         let d = "M " + points[0].x + " " + points[0].y;
         for (let i = 1; i < points.length; i += 1) {
           const prev = points[i - 1];
@@ -1426,10 +1497,7 @@
         }
         const last = points[points.length - 1];
         d += " T " + last.x + " " + last.y;
-        line.pitchSoft.setAttribute("d", d);
-        line.pitchStrong.setAttribute("d", d);
-        updatePitchGapClip(line, width, height);
-        renderPitchPoints(line, height);
+        return d;
       }
 
       function renderMusicGuides(line, width, height) {
@@ -1445,19 +1513,18 @@
         guides.setAttribute("class", "music-guides");
         const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
         MUSIC_NOTE_RANGE.forEach(function (note, idx) {
-          if (note.label.includes("#")) return;
+          if (!note.label.startsWith("C")) return;
           const y = idx * step;
           const guide = document.createElementNS("http://www.w3.org/2000/svg", "line");
           guide.setAttribute("x1", "0");
           guide.setAttribute("x2", String(width));
           guide.setAttribute("y1", String(y));
           guide.setAttribute("y2", String(y));
-          const isC = note.label.startsWith("C");
-          guide.setAttribute("stroke", isC ? "rgba(146, 195, 245, 0.22)" : "rgba(146, 195, 245, 0.1)");
-          guide.setAttribute("stroke-width", isC ? "1.2" : "0.9");
+          guide.setAttribute("stroke", "rgba(146, 195, 245, 0.18)");
+          guide.setAttribute("stroke-width", "1");
           guides.appendChild(guide);
         });
-        line.pitchSvg.insertBefore(guides, line.pitchSoft);
+        line.pitchSvg.insertBefore(guides, line.pitchSoftGroup);
         renderMusicRollLabels(line, height);
       }
 
@@ -1466,13 +1533,20 @@
         line.musicRoll.innerHTML = "";
         if (!trueMusicMode) return;
         const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
+        let rendered = 0;
+        let lastY = -999;
         MUSIC_NOTE_RANGE.forEach(function (note, idx) {
           if (!note.label.startsWith("C")) return;
+          if (rendered >= 4) return;
+          const y = idx * step;
+          if ((y - lastY) < 18) return;
           const label = document.createElement("span");
           label.className = "music-roll-label";
           label.textContent = note.label;
-          label.style.top = (idx * step) + "px";
+          label.style.top = y + "px";
           line.musicRoll.appendChild(label);
+          rendered += 1;
+          lastY = y;
         });
       }
 
@@ -1982,6 +2056,8 @@
         setTrueMusicMode(event.target.checked);
       });
 
+      trueMusicModeToggle.checked = false;
+      setTrueMusicMode(false);
       renderEmpty("Paste lyrics and click “Generate Song Map”.");
     })();
   </script>
