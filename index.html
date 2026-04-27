@@ -26,11 +26,10 @@
       background: radial-gradient(circle at top, #141a28 0, var(--bg) 38%);
       color: var(--text);
       font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-      min-width: 1200px;
     }
 
     .app {
-      width: 1320px;
+      width: min(1320px, 100%);
       margin: 0 auto;
       padding: 18px;
       display: grid;
@@ -77,7 +76,7 @@
       display: none;
       gap: 8px;
       align-items: center;
-      grid-template-columns: auto auto auto 1fr;
+      grid-template-columns: auto auto auto auto auto 1fr;
     }
 
     .composer.collapsed .topbar {
@@ -137,9 +136,10 @@
 
     .workspace {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
+      grid-template-columns: minmax(0, 1fr) clamp(300px, 28vw, 360px);
       gap: 12px;
       align-items: start;
+      min-width: 0;
     }
 
     .map-wrap {
@@ -227,6 +227,14 @@
       opacity: 0.96;
     }
 
+    .pitch-point {
+      fill: #9af2ff;
+      stroke: #163243;
+      stroke-width: 1.5;
+      cursor: pointer;
+      pointer-events: all;
+    }
+
     .breath-layer {
       position: absolute;
       inset: 0;
@@ -242,6 +250,25 @@
       background: rgba(158, 245, 255, 0.2);
       pointer-events: auto;
       cursor: pointer;
+    }
+
+    .breath-marker::after {
+      content: attr(data-breath-label);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 2px);
+      transform: translateX(-50%);
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 700;
+      color: #d8f7ff;
+      background: rgba(8, 17, 31, 0.82);
+      border: 1px solid rgba(158, 245, 255, 0.4);
+      border-radius: 999px;
+      padding: 1px 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      text-transform: lowercase;
     }
 
     .breath-marker.micro {
@@ -295,9 +322,33 @@
       max-width: 190px;
       padding: 6px 8px 8px;
       display: grid;
-      grid-template-rows: 22px auto 20px 16px;
+      grid-template-rows: 22px auto 20px;
       gap: 4px;
       user-select: none;
+    }
+
+    .word-card::after {
+      content: attr(data-volume-indicator);
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      min-width: 14px;
+      padding: 1px 4px;
+      border-radius: 999px;
+      font-size: 10px;
+      line-height: 1.1;
+      font-weight: 800;
+      color: rgba(222, 244, 255, 0.92);
+      background: rgba(8, 17, 31, 0.5);
+      border: 1px solid rgba(160, 214, 255, 0.35);
+      opacity: 0;
+      transform: translateY(-1px);
+      pointer-events: none;
+      transition: opacity 90ms linear;
+    }
+
+    .word-card.has-volume::after {
+      opacity: 0.9;
     }
 
     .word-card:hover {
@@ -344,42 +395,14 @@
       overflow-wrap: anywhere;
     }
 
-    .meta {
-      font-size: 11px;
-      text-align: center;
-      color: #b5bed2;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .vol-bar {
-      width: 36px;
-      height: 6px;
-      border-radius: 999px;
-      border: 1px solid #4c576f;
-      background: #141a27;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .vol-fill {
-      height: 100%;
-      background: hsl(190 90% 60%);
-      width: 0%;
-    }
-
-    .vol-bar.inactive {
-      opacity: 0;
-    }
-
     .side-panel {
       position: sticky;
       top: 12px;
       padding: 14px;
       display: grid;
       gap: 10px;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
     }
 
     .selection-block {
@@ -456,13 +479,17 @@
       <textarea id="lyricsInput" placeholder="Paste lyrics here..."></textarea>
       <div class="generate-row">
         <button id="generateBtn">Generate Song Map</button>
+        <button id="startLoadBtn">Load Song Map</button>
       </div>
 
       <div class="topbar">
         <button id="editLyricsBtn">Edit Lyrics</button>
         <button id="exportBtn">Export Map</button>
+        <button id="saveBtn">Save .smap</button>
+        <button id="loadBtn">Load .smap</button>
         <button id="clearMapBtn" class="danger">Clear Map</button>
         <input id="songTitle" class="song-label" type="text" placeholder="Song title / practice label" />
+        <input id="loadInput" type="file" accept=".smap,application/json,.json" hidden />
       </div>
     </section>
 
@@ -482,6 +509,7 @@
 
         <div class="mode-row">
           <button id="enuncModeBtn" class="mode-toggle">Enunciation Draw</button>
+          <button id="volumeModeBtn" class="mode-toggle">Volume Draw</button>
           <button id="pitchModeBtn" class="mode-toggle">Pitch Draw</button>
           <button id="breathModeBtn" class="mode-toggle">Breath Tool</button>
         </div>
@@ -579,9 +607,14 @@
       const composer = document.getElementById("composer");
       const lyricsInput = document.getElementById("lyricsInput");
       const generateBtn = document.getElementById("generateBtn");
+      const startLoadBtn = document.getElementById("startLoadBtn");
       const editLyricsBtn = document.getElementById("editLyricsBtn");
       const exportBtn = document.getElementById("exportBtn");
+      const saveBtn = document.getElementById("saveBtn");
+      const loadBtn = document.getElementById("loadBtn");
+      const loadInput = document.getElementById("loadInput");
       const clearMapBtn = document.getElementById("clearMapBtn");
+      const songTitleInput = document.getElementById("songTitle");
       const map = document.getElementById("map");
       const exportBox = document.getElementById("exportBox");
       const selectedSummary = document.getElementById("selectedSummary");
@@ -596,6 +629,7 @@
       const breathTypeSelect = document.getElementById("breathTypeSelect");
 
       const enuncModeBtn = document.getElementById("enuncModeBtn");
+      const volumeModeBtn = document.getElementById("volumeModeBtn");
       const pitchModeBtn = document.getElementById("pitchModeBtn");
       const breathModeBtn = document.getElementById("breathModeBtn");
 
@@ -606,6 +640,8 @@
       let lastLineSelected = null;
       let drawMode = null;
       let isDrawing = false;
+      let activePitchDrag = null;
+      let pitchPointSeed = 0;
       let breathSeed = 0;
       let lastBreathPlacement = null;
 
@@ -742,15 +778,34 @@
           });
 
           wordsWrap.addEventListener("mousedown", function (event) {
-            if (drawMode !== "breath" || event.button !== 0) return;
-            isDrawing = true;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
-            event.preventDefault();
+            if (drawMode === "pitch") {
+              handlePitchMouseDown(lineIndex, event);
+              return;
+            }
+            if (drawMode === "breath" && event.button === 0) {
+              isDrawing = true;
+              placeBreathMarker(lineIndex, event.clientX, event.clientY);
+              event.preventDefault();
+            }
           });
 
           wordsWrap.addEventListener("mousemove", function (event) {
+            if (drawMode === "pitch") {
+              handlePitchMouseMove(lineIndex, event);
+              return;
+            }
             if (!isDrawing || drawMode !== "breath") return;
             placeBreathMarker(lineIndex, event.clientX, event.clientY);
+          });
+
+          wordsWrap.addEventListener("contextmenu", function (event) {
+            if (drawMode !== "pitch") return;
+            const line = getLine(lineIndex);
+            if (!line) return;
+            const target = findPitchPointTarget(line, event.target);
+            if (!target) return;
+            event.preventDefault();
+            deletePitchPoint(line, target.point.id);
           });
 
           row.append(handle, wordsWrap);
@@ -765,6 +820,7 @@
             pitchSoft,
             pitchStrong,
             clipPath,
+            pitchPoints: [],
             breaths: [],
             breathLayer
           });
@@ -772,7 +828,7 @@
 
         composer.classList.add("collapsed");
         updateSelectionUI();
-        redrawAllPitchLines();
+        syncPitchLayerVisibility();
       }
 
       function createWordCard(wordData) {
@@ -791,25 +847,14 @@
         below.className = "annotation below";
         below.textContent = "\u00a0";
 
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const volLabel = document.createElement("span");
-        volLabel.textContent = "Vol -";
-        const volBar = document.createElement("span");
-        volBar.className = "vol-bar inactive";
-        const volFill = document.createElement("span");
-        volFill.className = "vol-fill";
-        volBar.appendChild(volFill);
-        meta.append(volLabel, volBar);
-
-        card.append(above, wordNode, below, meta);
+        card.append(above, wordNode, below);
 
         wordData.aboveNode = above;
         wordData.belowNode = below;
         wordData.wordNode = wordNode;
-        wordData.volNode = volLabel;
-        wordData.volBarNode = volBar;
-        wordData.volFillNode = volFill;
+        wordData.volNode = null;
+        wordData.volBarNode = null;
+        wordData.volFillNode = null;
 
         applyWordVisual(wordData);
 
@@ -818,15 +863,15 @@
         });
 
         card.addEventListener("mousedown", function (event) {
-          if (!drawMode || drawMode === "breath" || event.button !== 0) return;
+          if ((drawMode !== "enunciation" && drawMode !== "volume") || event.button !== 0) return;
           isDrawing = true;
-          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY, event);
           event.preventDefault();
         });
 
         card.addEventListener("mousemove", function (event) {
-          if (!isDrawing || !drawMode || drawMode === "breath") return;
-          applyDrawAtPoint(wordData.index, event.clientX, event.clientY);
+          if (!isDrawing || (drawMode !== "enunciation" && drawMode !== "volume")) return;
+          applyDrawAtPoint(wordData.index, event.clientX, event.clientY, event);
         });
 
         card.addEventListener("dblclick", function () {
@@ -943,28 +988,50 @@
         normalizeLetterLevels(word);
         renderWordLetters(word);
 
+        applyVolumeVisual(word);
+        if (isPitchToolActive()) redrawPitchLine(word.lineIndex);
+      }
+
+      function applyVolumeVisual(word) {
+        if (!word || !word.card) return;
         if (word.volume == null) {
-          word.volNode.textContent = "Vol -";
-          word.volFillNode.style.width = "0%";
-          word.volBarNode.classList.add("inactive");
-        } else {
-          const vol = clamp(Math.round(word.volume), 1, 10);
-          word.volNode.textContent = "Vol " + vol;
-          word.volFillNode.style.width = String(vol * 10) + "%";
-          word.volFillNode.style.background = volumeColor(vol);
-          word.volBarNode.classList.remove("inactive");
+          word.card.style.background = "linear-gradient(180deg, #1b2332 0%, #171e2b 100%)";
+          word.card.classList.remove("has-volume");
+          delete word.card.dataset.volumeIndicator;
+          return;
         }
-        redrawPitchLine(word.lineIndex);
+        const vol = clamp(Math.round(word.volume), 1, 10);
+        const tintTop = volumeColor(vol, 0.42);
+        const tintBottom = volumeColor(vol, 0.68);
+        word.card.style.background =
+          "linear-gradient(180deg, " + tintTop + " 0%, " + tintBottom + " 100%)";
+        word.card.classList.add("has-volume");
+        word.card.dataset.volumeIndicator = String(vol);
+      }
+
+      function isPitchToolActive() {
+        return drawMode === "pitch";
+      }
+
+      function syncPitchLayerVisibility() {
+        lines.forEach(function (line) {
+          if (!line || !line.pitchSvg) return;
+          line.pitchSvg.style.display = isPitchToolActive() ? "block" : "none";
+        });
       }
 
       function setDrawMode(mode) {
         drawMode = drawMode === mode ? null : mode;
+        activePitchDrag = null;
         enuncModeBtn.classList.toggle("active", drawMode === "enunciation");
+        volumeModeBtn.classList.toggle("active", drawMode === "volume");
         pitchModeBtn.classList.toggle("active", drawMode === "pitch");
         breathModeBtn.classList.toggle("active", drawMode === "breath");
+        syncPitchLayerVisibility();
+        if (isPitchToolActive()) redrawAllPitchLines();
       }
 
-      function applyDrawAtPoint(index, clientX, clientY) {
+      function applyDrawAtPoint(index, clientX, clientY, event) {
         const w = words[index];
         if (!w || !w.card) return;
         const rect = w.card.getBoundingClientRect();
@@ -973,10 +1040,109 @@
 
         if (drawMode === "enunciation") {
           paintLetterLevels(w, clientX, value);
-        } else if (drawMode === "pitch") {
-          w.pitch = value;
+        } else if (drawMode === "volume") {
+          if (event && (event.altKey || event.shiftKey)) {
+            w.volume = null;
+          } else {
+            w.volume = clamp(Math.round(1 + ((1 - ratio) * 9)), 1, 10);
+          }
         }
         applyWordVisual(w);
+      }
+
+      function getLine(lineIndex) {
+        return lines.find(function (item) { return item.lineIndex === lineIndex; });
+      }
+
+      function findPitchPointTarget(line, target) {
+        if (!line || !target || !target.closest) return null;
+        const pointNode = target.closest(".pitch-point");
+        if (!pointNode) return null;
+        const pointId = pointNode.dataset.pitchPointId;
+        if (!pointId) return null;
+        const point = line.pitchPoints.find(function (item) { return item.id === pointId; });
+        if (!point) return null;
+        return { point, pointNode };
+      }
+
+      function getLocalPointPosition(line, clientX, clientY) {
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        return {
+          x: clamp(clientX - wrapRect.left, 0, wrapRect.width),
+          y: clamp(clientY - wrapRect.top, 0, wrapRect.height),
+          width: Math.max(1, wrapRect.width),
+          height: Math.max(1, wrapRect.height)
+        };
+      }
+
+      function canCreatePitchPoint(line, x, y, ignoredPointId) {
+        const minSpacingPx = 4;
+        return !line.pitchPoints.some(function (item) {
+          if (ignoredPointId && item.id === ignoredPointId) return false;
+          const dx = item.x - x;
+          const dy = item.y - y;
+          return Math.sqrt((dx * dx) + (dy * dy)) < minSpacingPx;
+        });
+      }
+
+      function createPitchPoint(line, x, y) {
+        if (!canCreatePitchPoint(line, x, y)) return null;
+        const point = { id: "p-" + (pitchPointSeed += 1), x, y };
+        line.pitchPoints.push(point);
+        sortLinePitchPoints(line);
+        return point;
+      }
+
+      function sortLinePitchPoints(line) {
+        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+      }
+
+      function deletePitchPoint(line, pointId) {
+        line.pitchPoints = line.pitchPoints.filter(function (point) { return point.id !== pointId; });
+        redrawPitchLine(line.lineIndex);
+      }
+
+      function handlePitchMouseDown(lineIndex, event) {
+        if (event.button !== 0 && event.button !== 2) return;
+        const line = getLine(lineIndex);
+        if (!line || !line.wordsWrap) return;
+        const target = findPitchPointTarget(line, event.target);
+
+        if (event.button === 2 || (event.button === 0 && event.ctrlKey)) {
+          if (target) {
+            deletePitchPoint(line, target.point.id);
+            event.preventDefault();
+          }
+          return;
+        }
+
+        if (event.button !== 0) return;
+        const local = getLocalPointPosition(line, event.clientX, event.clientY);
+        let point = target ? target.point : createPitchPoint(line, local.x, local.y);
+        if (!point) return;
+        if (!target) {
+          point.x = local.x;
+          point.y = local.y;
+          sortLinePitchPoints(line);
+        }
+
+        activePitchDrag = { lineIndex: line.lineIndex, pointId: point.id };
+        redrawPitchLine(line.lineIndex);
+        event.preventDefault();
+      }
+
+      function handlePitchMouseMove(lineIndex, event) {
+        if (!activePitchDrag || activePitchDrag.lineIndex !== lineIndex || (event.buttons & 1) !== 1) return;
+        const line = getLine(lineIndex);
+        if (!line) return;
+        const point = line.pitchPoints.find(function (item) { return item.id === activePitchDrag.pointId; });
+        if (!point) return;
+        const local = getLocalPointPosition(line, event.clientX, event.clientY);
+        point.x = local.x;
+        point.y = local.y;
+        sortLinePitchPoints(line);
+        redrawPitchLine(line.lineIndex);
+        event.preventDefault();
       }
 
       function normalizeLetterLevels(word) {
@@ -1049,12 +1215,14 @@
       }
 
       function redrawAllPitchLines() {
+        if (!isPitchToolActive()) return;
         lines.forEach(function (line) {
           redrawPitchLine(line.lineIndex);
         });
       }
 
       function redrawPitchLine(lineIndex) {
+        if (!isPitchToolActive()) return;
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
         if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
 
@@ -1064,14 +1232,16 @@
         line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
 
-        const points = line.wordIndices.map(function (idx) {
-          const w = words[idx];
-          const cardRect = w.card.getBoundingClientRect();
-          const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-          const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-          const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-          return { x, y };
-        });
+        const points = (line.pitchPoints && line.pitchPoints.length)
+          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
+          : line.wordIndices.map(function (idx) {
+            const w = words[idx];
+            const cardRect = w.card.getBoundingClientRect();
+            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
+            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
+            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
+            return { x, y };
+          });
 
         if (points.length === 1) {
           const single = points[0];
@@ -1079,6 +1249,7 @@
           line.pitchSoft.setAttribute("d", singlePath);
           line.pitchStrong.setAttribute("d", singlePath);
           updatePitchGapClip(line, width, height);
+          renderPitchPoints(line);
           return;
         }
 
@@ -1095,6 +1266,25 @@
         line.pitchSoft.setAttribute("d", d);
         line.pitchStrong.setAttribute("d", d);
         updatePitchGapClip(line, width, height);
+        renderPitchPoints(line);
+      }
+
+      function renderPitchPoints(line) {
+        if (!line || !line.pitchSvg) return;
+        const existing = line.pitchSvg.querySelector(".pitch-points");
+        if (existing) existing.remove();
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("class", "pitch-points");
+        (line.pitchPoints || []).forEach(function (point) {
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", String(point.x));
+          circle.setAttribute("cy", String(point.y));
+          circle.setAttribute("r", "4.2");
+          circle.setAttribute("class", "pitch-point");
+          circle.setAttribute("data-pitch-point-id", point.id);
+          group.appendChild(circle);
+        });
+        line.pitchSvg.appendChild(group);
       }
 
       function updatePitchGapClip(line, width, height) {
@@ -1201,6 +1391,7 @@
           marker.type = "button";
           marker.className = "breath-marker " + breath.type;
           marker.title = breath.type.replace("-", " ");
+          marker.dataset.breathLabel = breath.type;
           marker.style.left = breath.x + "px";
           marker.style.top = breath.y + "px";
           marker.addEventListener("click", function (event) {
@@ -1248,9 +1439,13 @@
         applyToSelected(function (w) { w.volume = null; });
       }
 
-      function volumeColor(volume) {
-        const hue = 210 - ((volume - 1) / 9) * 195;
-        return "hsl(" + hue + " 88% 58%)";
+      function volumeColor(volume, alpha) {
+        const t = (clamp(volume, 1, 10) - 1) / 9;
+        const hue = 192 + (t * 28);
+        const sat = 68 + (t * 22);
+        const light = 78 - (t * 52);
+        const a = alpha == null ? 1 : clamp(alpha, 0, 1);
+        return "hsla(" + hue + ", " + sat + "%, " + light + "%, " + a + ")";
       }
 
       function clearSelectedMarkings() {
@@ -1284,7 +1479,9 @@
       function clearMap() {
         clearModel();
         drawMode = null;
+        activePitchDrag = null;
         enuncModeBtn.classList.remove("active");
+        volumeModeBtn.classList.remove("active");
         pitchModeBtn.classList.remove("active");
         breathModeBtn.classList.remove("active");
         lyricsInput.value = "";
@@ -1338,24 +1535,204 @@
         exportBox.textContent = chunks.join("\n").trim() || "Nothing to export yet.";
       }
 
+      function buildSongMapPayload() {
+        const lyrics = normalizeLyrics(lyricsInput.value);
+        const wordsPayload = words.map(function (w) {
+          return {
+            index: w.index,
+            lineIndex: w.lineIndex,
+            text: w.text,
+            above: w.above,
+            below: w.below,
+            volume: w.volume,
+            enunciation: w.enunciation,
+            letterLevels: Array.isArray(w.letterLevels) ? w.letterLevels.slice() : [],
+            pitch: w.pitch
+          };
+        });
+
+        const linesPayload = lines.map(function (line) {
+          return {
+            lineIndex: line.lineIndex,
+            raw: line.raw,
+            wordIndices: Array.isArray(line.wordIndices) ? line.wordIndices.slice() : [],
+            pitchPoints: Array.isArray(line.pitchPoints) ? line.pitchPoints.map(function (point) {
+              return { id: point.id, x: point.x, y: point.y };
+            }) : [],
+            breaths: Array.isArray(line.breaths) ? line.breaths.map(function (breath) {
+              return { id: breath.id, type: breath.type, x: breath.x, y: breath.y };
+            }) : []
+          };
+        });
+
+        return {
+          songTitle: (songTitleInput.value || "").trim(),
+          lyrics,
+          words: wordsPayload,
+          lines: linesPayload
+        };
+      }
+
+      function sanitizeFilename(base) {
+        const cleaned = (base || "song")
+          .trim()
+          .replace(/[<>:\"/\\|?*\x00-\x1F]/g, "")
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "");
+        return cleaned || "song";
+      }
+
+      function validateSongMapPayload(payload) {
+        if (!payload || typeof payload !== "object") return "Invalid file format.";
+        if (!Array.isArray(payload.lyrics)) return "Missing or invalid lyrics field.";
+        if (!Array.isArray(payload.words)) return "Missing or invalid words field.";
+        if (!Array.isArray(payload.lines)) return "Missing or invalid lines field.";
+        return "";
+      }
+
+      function applyLoadedSongMap(payload) {
+        lyricsInput.value = payload.lyrics.join("\n");
+        if (typeof payload.songTitle === "string") {
+          songTitleInput.value = payload.songTitle;
+        } else {
+          songTitleInput.value = "";
+        }
+
+        generateMap();
+
+        const wordsByIndex = new Map(payload.words.map(function (item) {
+          return [item.index, item];
+        }));
+
+        words.forEach(function (word) {
+          const loaded = wordsByIndex.get(word.index);
+          if (!loaded) return;
+          if (typeof loaded.text === "string") word.text = loaded.text;
+          word.above = typeof loaded.above === "string" ? loaded.above : "";
+          word.below = typeof loaded.below === "string" ? loaded.below : "";
+          word.volume = loaded.volume == null ? null : clamp(Number(loaded.volume) || 1, 1, 10);
+          word.pitch = loaded.pitch == null ? 50 : clamp(Number(loaded.pitch) || 50, 0, 100);
+          word.enunciation = loaded.enunciation == null ? 50 : clamp(Number(loaded.enunciation) || 50, 0, 100);
+          if (Array.isArray(loaded.letterLevels)) {
+            word.letterLevels = loaded.letterLevels.map(function (level) {
+              return clamp(Number(level) || 50, 0, 100);
+            });
+          } else {
+            word.letterLevels = Array.from({ length: word.text.length }, function () { return word.enunciation; });
+          }
+          applyWordVisual(word);
+        });
+
+        const lineByIndex = new Map(payload.lines.map(function (item) {
+          return [item.lineIndex, item];
+        }));
+
+        lines.forEach(function (line) {
+          const loaded = lineByIndex.get(line.lineIndex);
+          if (!loaded) return;
+          line.pitchPoints = Array.isArray(loaded.pitchPoints)
+            ? loaded.pitchPoints.map(function (point) {
+              return {
+                id: String(point.id || ("p-" + (pitchPointSeed += 1))),
+                x: Number(point.x) || 0,
+                y: Number(point.y) || 0
+              };
+            })
+            : [];
+          line.breaths = Array.isArray(loaded.breaths)
+            ? loaded.breaths.map(function (breath) {
+              return {
+                id: String(breath.id || ("b-" + (breathSeed += 1))),
+                type: typeof breath.type === "string" ? breath.type : "normal",
+                x: Number(breath.x) || 0,
+                y: Number(breath.y) || 0
+              };
+            })
+            : [];
+          renderBreathMarkers(line);
+        });
+
+        redrawAllPitchLines();
+        syncPitchLayerVisibility();
+      }
+
+      function loadSongMapFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function () {
+          try {
+            const payload = JSON.parse(String(reader.result || ""));
+            const validationError = validateSongMapPayload(payload);
+            if (validationError) {
+              exportBox.textContent = "Load failed: " + validationError;
+              return;
+            }
+            clearMap();
+            applyLoadedSongMap(payload);
+            exportBox.textContent = "Loaded song map from " + file.name;
+          } catch (error) {
+            exportBox.textContent = "Load failed: Invalid .smap JSON file.";
+          }
+        };
+        reader.onerror = function () {
+          exportBox.textContent = "Load failed: Unable to read file.";
+        };
+        reader.readAsText(file, "utf-8");
+      }
+
+      function saveSongMap() {
+        if (!words.length && !lines.length) {
+          exportBox.textContent = "Nothing to save yet.";
+          return;
+        }
+        const payload = buildSongMapPayload();
+        const json = JSON.stringify(payload, null, 2);
+        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = sanitizeFilename(songTitleInput.value || "song") + ".smap";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function openLoadPicker() {
+        loadInput.value = "";
+        loadInput.click();
+      }
+
       document.addEventListener("mouseup", function () {
         isDrawing = false;
+        activePitchDrag = null;
       });
 
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") {
           drawMode = null;
+          activePitchDrag = null;
           enuncModeBtn.classList.remove("active");
+          volumeModeBtn.classList.remove("active");
           pitchModeBtn.classList.remove("active");
           breathModeBtn.classList.remove("active");
+          syncPitchLayerVisibility();
         }
       });
 
       window.addEventListener("resize", redrawAllPitchLines);
 
       generateBtn.addEventListener("click", generateMap);
+      startLoadBtn.addEventListener("click", openLoadPicker);
       editLyricsBtn.addEventListener("click", editLyrics);
       exportBtn.addEventListener("click", exportMap);
+      saveBtn.addEventListener("click", saveSongMap);
+      loadBtn.addEventListener("click", openLoadPicker);
+      loadInput.addEventListener("change", function (event) {
+        const file = event.target.files && event.target.files[0];
+        loadSongMapFile(file);
+      });
       clearMapBtn.addEventListener("click", clearMap);
 
       document.getElementById("applyAbovePresetBtn").addEventListener("click", function () {
@@ -1383,6 +1760,7 @@
       document.getElementById("applyWordEditBtn").addEventListener("click", applyWordEdit);
 
       enuncModeBtn.addEventListener("click", function () { setDrawMode("enunciation"); });
+      volumeModeBtn.addEventListener("click", function () { setDrawMode("volume"); });
       pitchModeBtn.addEventListener("click", function () { setDrawMode("pitch"); });
       breathModeBtn.addEventListener("click", function () { setDrawMode("breath"); });
 
