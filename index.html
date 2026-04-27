@@ -232,7 +232,7 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      overflow: visible;
+      overflow: hidden;
       pointer-events: none;
       z-index: 3;
     }
@@ -1395,37 +1395,17 @@
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
 
-        const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
-          : line.wordIndices.map(function (idx) {
-            const w = words[idx];
-            const cardRect = w.card.getBoundingClientRect();
-            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
-          });
-
-        if (points.length === 1) {
-          const single = points[0];
-          const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
-          line.pitchSoft.setAttribute("d", singlePath);
-          line.pitchStrong.setAttribute("d", singlePath);
+        const points = getRenderablePitchPoints(line, width, height);
+        if (!points.length) {
+          line.pitchSoft.setAttribute("d", "");
+          line.pitchStrong.setAttribute("d", "");
           updatePitchGapClip(line, width, height);
           renderPitchPoints(line, height);
           return;
         }
 
-        let d = "M " + points[0].x + " " + points[0].y;
-        for (let i = 1; i < points.length; i += 1) {
-          const prev = points[i - 1];
-          const curr = points[i];
-          const midX = (prev.x + curr.x) / 2;
-          const midY = (prev.y + curr.y) / 2;
-          d += " Q " + prev.x + " " + prev.y + " " + midX + " " + midY;
-        }
-        const last = points[points.length - 1];
-        d += " T " + last.x + " " + last.y;
+        const clusteredRows = clusterPitchPointsByVisualRow(line, points);
+        const d = buildPitchPathFromRows(clusteredRows);
         line.pitchSoft.setAttribute("d", d);
         line.pitchStrong.setAttribute("d", d);
         updatePitchGapClip(line, width, height);
@@ -1458,6 +1438,58 @@
         });
         line.pitchSvg.insertBefore(guides, line.pitchSoft);
         renderMusicRollLabels(line, height);
+      }
+
+      function getRenderablePitchPoints(line, width, height) {
+        if (!line || !Array.isArray(line.pitchPoints) || !line.pitchPoints.length) return [];
+        return line.pitchPoints
+          .map(function (point) {
+            const x = clamp(Number(point.x) || 0, 0, width);
+            const y = clamp(Number(point.y) || 0, 0, height);
+            return { id: point.id, x, y };
+          })
+          .sort(function (a, b) { return a.x - b.x; });
+      }
+
+      function clusterPitchPointsByVisualRow(line, points) {
+        const ROW_TOLERANCE = 12;
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const sortedByY = points
+          .map(function (point) {
+            const pointY = wrapRect.top + point.y;
+            return { id: point.id, x: point.x, y: point.y, pointY };
+          })
+          .sort(function (a, b) { return a.pointY - b.pointY; });
+
+        const rows = [];
+        sortedByY.forEach(function (point) {
+          const row = rows[rows.length - 1];
+          if (!row || Math.abs(point.pointY - row.avgY) > ROW_TOLERANCE) {
+            rows.push({ avgY: point.pointY, points: [point] });
+            return;
+          }
+          row.points.push(point);
+          row.avgY = row.points.reduce(function (sum, item) { return sum + item.pointY; }, 0) / row.points.length;
+        });
+
+        rows.forEach(function (row) {
+          row.points.sort(function (a, b) { return a.x - b.x; });
+        });
+        return rows;
+      }
+
+      function buildPitchPathFromRows(rows) {
+        let d = "";
+        rows.forEach(function (row) {
+          if (!row.points || row.points.length < 2) return;
+          const first = row.points[0];
+          d += (d ? " " : "") + "M " + first.x + " " + first.y;
+          for (let i = 1; i < row.points.length; i += 1) {
+            const point = row.points[i];
+            d += " L " + point.x + " " + point.y;
+          }
+        });
+        return d;
       }
 
       function renderMusicRollLabels(line, height) {
