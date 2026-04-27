@@ -897,16 +897,16 @@
           clipPath.setAttribute("id", clipId);
           defs.append(gradient, clipPath);
 
-          const pitchSoft = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchSoft.classList.add("pitch-path", "soft");
-          pitchSoft.setAttribute("stroke", "url(#" + gradientId + ")");
+          const pitchSoftGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          pitchSoftGroup.classList.add("pitch-soft-group");
+          pitchSoftGroup.setAttribute("stroke", "url(#" + gradientId + ")");
 
-          const pitchStrong = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          pitchStrong.classList.add("pitch-path", "strong");
-          pitchStrong.setAttribute("stroke", "url(#" + gradientId + ")");
-          pitchStrong.setAttribute("clip-path", "url(#" + clipId + ")");
+          const pitchStrongGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          pitchStrongGroup.classList.add("pitch-strong-group");
+          pitchStrongGroup.setAttribute("stroke", "url(#" + gradientId + ")");
+          pitchStrongGroup.setAttribute("clip-path", "url(#" + clipId + ")");
 
-          pitchSvg.append(defs, pitchSoft, pitchStrong);
+          pitchSvg.append(defs, pitchSoftGroup, pitchStrongGroup);
           wordsWrap.appendChild(pitchSvg);
           const breathLayer = document.createElement("div");
           breathLayer.className = "breath-layer";
@@ -969,8 +969,8 @@
             wordsWrap,
             musicRoll,
             pitchSvg,
-            pitchSoft,
-            pitchStrong,
+            pitchSoftGroup,
+            pitchStrongGroup,
             clipPath,
             pitchPoints: [],
             breaths: [],
@@ -1386,7 +1386,7 @@
       function redrawPitchLine(lineIndex) {
         if (!isPitchToolActive()) return;
         const line = lines.find(function (item) { return item.lineIndex === lineIndex; });
-        if (!line || !line.pitchSoft || !line.pitchStrong || !line.wordsWrap || !line.wordIndices.length) return;
+        if (!line || !line.pitchSoftGroup || !line.pitchStrongGroup || !line.wordsWrap || !line.wordIndices.length) return;
 
         const wrapRect = line.wordsWrap.getBoundingClientRect();
         const width = Math.max(1, wrapRect.width);
@@ -1394,28 +1394,100 @@
         line.pitchSvg.setAttribute("viewBox", "0 0 " + width + " " + height);
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
+        const rowPointSets = getPitchRows(line, wrapRect);
+        renderPitchPathRows(line.pitchSoftGroup, rowPointSets, "soft");
+        renderPitchPathRows(line.pitchStrongGroup, rowPointSets, "strong");
+        updatePitchGapClip(line, width, height);
+        renderPitchPoints(line, height);
+      }
 
-        const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
-          : line.wordIndices.map(function (idx) {
-            const w = words[idx];
-            const cardRect = w.card.getBoundingClientRect();
-            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
+      function getPitchRows(line, wrapRect) {
+        const rowBands = getVisualRowBands(line, wrapRect);
+        if (!rowBands.length) return [];
+
+        if (line.pitchPoints && line.pitchPoints.length) {
+          const rows = rowBands.map(function () { return []; });
+          line.pitchPoints.forEach(function (point) {
+            const rowIndex = nearestRowIndex(point.y, rowBands);
+            rows[rowIndex].push({ x: point.x, y: point.y });
           });
-
-        if (points.length === 1) {
-          const single = points[0];
-          const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
-          line.pitchSoft.setAttribute("d", singlePath);
-          line.pitchStrong.setAttribute("d", singlePath);
-          updatePitchGapClip(line, width, height);
-          renderPitchPoints(line, height);
-          return;
+          return rows
+            .map(function (points) {
+              return points.slice().sort(function (a, b) { return a.x - b.x; });
+            })
+            .filter(function (points) { return points.length; });
         }
 
+        const rows = rowBands.map(function () { return []; });
+        line.wordIndices.forEach(function (idx) {
+          const w = words[idx];
+          const cardRect = w.card.getBoundingClientRect();
+          const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
+          const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
+          const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
+          const rowIndex = nearestRowIndex((cardRect.top - wrapRect.top) + (cardRect.height / 2), rowBands);
+          rows[rowIndex].push({ x, y });
+        });
+        return rows.filter(function (points) { return points.length; });
+      }
+
+      function getVisualRowBands(line, wrapRect) {
+        const bands = [];
+        line.wordIndices.forEach(function (idx) {
+          const card = words[idx] && words[idx].card;
+          if (!card) return;
+          const r = card.getBoundingClientRect();
+          const top = r.top - wrapRect.top;
+          const bottom = r.bottom - wrapRect.top;
+          const middle = top + ((bottom - top) / 2);
+          let target = null;
+          for (let i = 0; i < bands.length; i += 1) {
+            if (Math.abs(bands[i].mid - middle) < 8) {
+              target = bands[i];
+              break;
+            }
+          }
+          if (!target) {
+            target = { top, bottom, mid: middle };
+            bands.push(target);
+          } else {
+            target.top = Math.min(target.top, top);
+            target.bottom = Math.max(target.bottom, bottom);
+            target.mid = target.top + ((target.bottom - target.top) / 2);
+          }
+        });
+        return bands.sort(function (a, b) { return a.top - b.top; });
+      }
+
+      function nearestRowIndex(y, rowBands) {
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        rowBands.forEach(function (band, idx) {
+          const distance = Math.abs(band.mid - y);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = idx;
+          }
+        });
+        return bestIndex;
+      }
+
+      function renderPitchPathRows(group, rowPointSets, strengthClass) {
+        while (group.firstChild) group.removeChild(group.firstChild);
+        rowPointSets.forEach(function (points) {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", buildPitchPath(points));
+          path.setAttribute("class", "pitch-path " + strengthClass);
+          group.appendChild(path);
+        });
+      }
+
+      function buildPitchPath(points) {
+        if (!points.length) return "";
+        if (points.length === 1) {
+          const single = points[0];
+          return "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
+        }
         let d = "M " + points[0].x + " " + points[0].y;
         for (let i = 1; i < points.length; i += 1) {
           const prev = points[i - 1];
@@ -1426,10 +1498,7 @@
         }
         const last = points[points.length - 1];
         d += " T " + last.x + " " + last.y;
-        line.pitchSoft.setAttribute("d", d);
-        line.pitchStrong.setAttribute("d", d);
-        updatePitchGapClip(line, width, height);
-        renderPitchPoints(line, height);
+        return d;
       }
 
       function renderMusicGuides(line, width, height) {
@@ -1457,7 +1526,7 @@
           guide.setAttribute("stroke-width", isC ? "1.2" : "0.9");
           guides.appendChild(guide);
         });
-        line.pitchSvg.insertBefore(guides, line.pitchSoft);
+        line.pitchSvg.insertBefore(guides, line.pitchSoftGroup);
         renderMusicRollLabels(line, height);
       }
 
