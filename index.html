@@ -1519,52 +1519,73 @@
         return d;
       }
 
-      function renderMusicGuides(line, width, height, rowBands) {
-        if (!line || !line.pitchSvg) return;
-        const existing = line.pitchSvg.querySelector(".music-guides");
-        if (existing) existing.remove();
-        if (!trueMusicMode) {
-          renderMusicRollLabels(line, height, rowBands);
-          return;
-        }
+ function renderMusicGuides(line, width, height, rowBands) {
+  if (!line || !line.pitchSvg) return;
 
-        const guides = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        guides.setAttribute("class", "music-guides");
-        const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
-        MUSIC_NOTE_RANGE.forEach(function (note, idx) {
-          const isNatural = !note.label.includes("#");
-          if (!isNatural) return;
-          const isC = note.label.startsWith("C");
-          const isG = note.label.startsWith("G");
-          if (!isC && !isG) return;
-          const y = idx * step;
-          const guide = document.createElementNS("http://www.w3.org/2000/svg", "line");
-          guide.setAttribute("x1", "0");
-          guide.setAttribute("x2", String(width));
-          guide.setAttribute("y1", String(y));
-          guide.setAttribute("y2", String(y));
-          guide.setAttribute("stroke", isC ? "rgba(154, 209, 255, 0.24)" : "rgba(154, 209, 255, 0.12)");
-          guide.setAttribute("stroke-width", isC ? "1.2" : "0.8");
-          guides.appendChild(guide);
-        });
-        line.pitchSvg.insertBefore(guides, line.pitchSoftGroup);
-        renderMusicRollLabels(line, height, rowBands);
-      }
+  // Always remove ALL existing grids (fix stacking)
+  line.pitchSvg.querySelectorAll(".music-guides").forEach(el => el.remove());
 
-      function renderMusicRollLabels(line, height, rowBands) {
-        if (!line || !line.musicRoll) return;
-        line.musicRoll.innerHTML = "";
-        if (!trueMusicMode) return;
-        const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
-        MUSIC_NOTE_RANGE.forEach(function (note, idx) {
-          if (!note.label.startsWith("C")) return;
-          const label = document.createElement("span");
-          label.className = "music-roll-label";
-          label.textContent = note.label;
-          label.style.top = (idx * step) + "px";
-          line.musicRoll.appendChild(label);
-        });
-      }
+  // If music mode is OFF → clear labels and stop
+  if (!trueMusicMode) {
+    if (line.musicRoll) line.musicRoll.innerHTML = "";
+    return;
+  }
+
+  // Create grid once
+  const guides = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  guides.setAttribute("class", "music-guides");
+
+  const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
+
+  MUSIC_NOTE_RANGE.forEach(function (note, idx) {
+    const isNatural = !note.label.includes("#");
+    if (!isNatural) return;
+
+    const isC = note.label.startsWith("C");
+    const isG = note.label.startsWith("G");
+    if (!isC && !isG) return;
+
+    const y = idx * step;
+
+    const guide = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    guide.setAttribute("x1", "0");
+    guide.setAttribute("x2", String(width));
+    guide.setAttribute("y1", String(y));
+    guide.setAttribute("y2", String(y));
+    guide.setAttribute("stroke", isC ? "rgba(154, 209, 255, 0.24)" : "rgba(154, 209, 255, 0.12)");
+    guide.setAttribute("stroke-width", isC ? "1.2" : "0.8");
+
+    guides.appendChild(guide);
+  });
+
+  line.pitchSvg.insertBefore(guides, line.pitchSoftGroup);
+
+  // Render labels AFTER grid
+  // renderMusicRollLabels(line, height, rowBands);
+}
+
+function renderMusicRollLabels(line, height, rowBands) {
+  if (!line || !line.musicRoll) return;
+
+  // Always clear first
+  line.musicRoll.innerHTML = "";
+
+  // Only render if enabled
+  if (!trueMusicMode) return;
+
+  const step = Math.max(1, (height - 1) / Math.max(1, MUSIC_NOTE_RANGE.length - 1));
+
+  MUSIC_NOTE_RANGE.forEach(function (note, idx) {
+    if (!note.label.startsWith("C")) return;
+
+    const label = document.createElement("span");
+    label.className = "music-roll-label";
+    label.textContent = note.label;
+    label.style.top = (idx * step) + "px";
+
+    line.musicRoll.appendChild(label);
+  });
+}
 
       function renderPitchPoints(line, rowBands) {
         if (!line || !line.pitchSvg) return;
