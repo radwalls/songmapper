@@ -1255,7 +1255,14 @@
       }
 
       function sortLinePitchPoints(line) {
-        line.pitchPoints.sort(function (a, b) { return a.x - b.x; });
+        if (!line || !Array.isArray(line.pitchPoints) || !line.wordsWrap) return;
+        const rowBands = getLineRowBands(line);
+        line.pitchPoints.sort(function (a, b) {
+          const rowA = getRowIndexForY(a.y, rowBands);
+          const rowB = getRowIndexForY(b.y, rowBands);
+          if (rowA !== rowB) return rowA - rowB;
+          return a.x - b.x;
+        });
       }
 
       function deletePitchPoint(line, pointId) {
@@ -1395,27 +1402,46 @@
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
 
+        const rowBands = getLineRowBands(line, wrapRect);
         const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
+          ? line.pitchPoints.slice().sort(function (a, b) {
+            const rowA = getRowIndexForY(a.y, rowBands);
+            const rowB = getRowIndexForY(b.y, rowBands);
+            if (rowA !== rowB) return rowA - rowB;
+            return a.x - b.x;
+          }).map(function (point) {
+            return { x: point.x, y: point.y, rowIndex: getRowIndexForY(point.y, rowBands) };
+          })
           : line.wordIndices.map(function (idx) {
             const w = words[idx];
             const cardRect = w.card.getBoundingClientRect();
             const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
             const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
             const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
+            return { x, y, rowIndex: getRowIndexForY(y, rowBands) };
           });
 
-        if (points.length === 1) {
-          const single = points[0];
-          const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
-          line.pitchSoft.setAttribute("d", singlePath);
-          line.pitchStrong.setAttribute("d", singlePath);
-          updatePitchGapClip(line, width, height);
-          renderPitchPoints(line, height);
-          return;
-        }
+        const byRow = new Map();
+        points.forEach(function (point) {
+          const rowPoints = byRow.get(point.rowIndex) || [];
+          rowPoints.push(point);
+          byRow.set(point.rowIndex, rowPoints);
+        });
+        const rowPaths = Array.from(byRow.keys()).sort(function (a, b) { return a - b; }).map(function (rowIndex) {
+          return buildPitchPath(byRow.get(rowIndex));
+        }).filter(Boolean);
+        const combinedPath = rowPaths.join(" ");
+        line.pitchSoft.setAttribute("d", combinedPath);
+        line.pitchStrong.setAttribute("d", combinedPath);
+        updatePitchGapClip(line, width, height);
+        renderPitchPoints(line, height);
+      }
 
+      function buildPitchPath(points) {
+        if (!Array.isArray(points) || !points.length) return "";
+        if (points.length === 1) {
+          return "M " + points[0].x + " " + points[0].y + " L " + (points[0].x + 1) + " " + points[0].y;
+        }
         let d = "M " + points[0].x + " " + points[0].y;
         for (let i = 1; i < points.length; i += 1) {
           const prev = points[i - 1];
@@ -1426,10 +1452,46 @@
         }
         const last = points[points.length - 1];
         d += " T " + last.x + " " + last.y;
-        line.pitchSoft.setAttribute("d", d);
-        line.pitchStrong.setAttribute("d", d);
-        updatePitchGapClip(line, width, height);
-        renderPitchPoints(line, height);
+        return d;
+      }
+
+      function getLineRowBands(line, wrapRectInput) {
+        const wrapRect = wrapRectInput || line.wordsWrap.getBoundingClientRect();
+        const rowBands = [];
+        line.wordIndices.forEach(function (idx) {
+          const card = words[idx] && words[idx].card;
+          if (!card) return;
+          const r = card.getBoundingClientRect();
+          const top = r.top - wrapRect.top;
+          const bottom = r.bottom - wrapRect.top;
+          const center = (top + bottom) / 2;
+          const existing = rowBands.find(function (band) {
+            return Math.abs(band.center - center) < 10;
+          });
+          if (existing) {
+            existing.top = Math.min(existing.top, top);
+            existing.bottom = Math.max(existing.bottom, bottom);
+            existing.center = (existing.top + existing.bottom) / 2;
+            return;
+          }
+          rowBands.push({ top, bottom, center });
+        });
+        rowBands.sort(function (a, b) { return a.center - b.center; });
+        return rowBands;
+      }
+
+      function getRowIndexForY(y, rowBands) {
+        if (!Array.isArray(rowBands) || !rowBands.length) return 0;
+        let bestIndex = 0;
+        let bestDistance = Infinity;
+        rowBands.forEach(function (band, idx) {
+          const distance = Math.abs(y - band.center);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = idx;
+          }
+        });
+        return bestIndex;
       }
 
       function renderMusicGuides(line, width, height) {
