@@ -194,7 +194,7 @@
     .line-words {
       position: relative;
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: flex-start;
       gap: 6px;
       padding: 2px;
@@ -608,6 +608,7 @@
       let isDrawing = false;
       let breathSeed = 0;
       let lastBreathPlacement = null;
+      const LINE_SPLIT_TOLERANCE_PX = 10;
 
       function normalizeLyrics(text) {
         return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -668,34 +669,89 @@
           return;
         }
 
-        map.innerHTML = "";
         const parsedLines = normalizeLyrics(raw);
-        let globalIndex = 0;
+        words = buildWordsFromParsedLyrics(parsedLines);
+        lines = buildInitialLines(parsedLines);
+        renderLines({ allowWrapForMeasurement: true });
+        splitWrappedLinesIntoRealLines();
+        renderLines({ allowWrapForMeasurement: false });
 
+        composer.classList.add("collapsed");
+        updateSelectionUI();
+        redrawAllPitchLines();
+      }
+
+      function buildWordsFromParsedLyrics(parsedLines) {
+        const nextWords = [];
+        let globalIndex = 0;
+        parsedLines.forEach(function (lineText, lineIndex) {
+          const tokens = lineText.trim() ? lineText.trim().split(/\s+/) : [];
+          tokens.forEach(function (token) {
+            nextWords.push(makeWordData(token, globalIndex, lineIndex));
+            globalIndex += 1;
+          });
+        });
+        return nextWords;
+      }
+
+      function buildInitialLines(parsedLines) {
+        const nextLines = [];
+        let wordCursor = 0;
         parsedLines.forEach(function (lineText, lineIndex) {
           if (!lineText.trim()) {
+            nextLines.push({ lineIndex, wordIndices: [], raw: "", breaths: [] });
+            return;
+          }
+          const tokens = lineText.trim().split(/\s+/);
+          const wordIndices = [];
+          for (let i = 0; i < tokens.length; i += 1) {
+            wordIndices.push(wordCursor);
+            wordCursor += 1;
+          }
+          nextLines.push({ lineIndex, wordIndices, raw: lineText, breaths: [] });
+        });
+        return nextLines;
+      }
+
+      function renderLines(options) {
+        const allowWrapForMeasurement = Boolean(options && options.allowWrapForMeasurement);
+        map.innerHTML = "";
+        let visibleLineNumber = 0;
+
+        lines.forEach(function (line, idx) {
+          line.lineIndex = idx;
+          line.handle = null;
+          line.wordsWrap = null;
+          line.pitchSvg = null;
+          line.pitchSoft = null;
+          line.pitchStrong = null;
+          line.clipPath = null;
+          line.breathLayer = null;
+
+          if (!line.wordIndices.length) {
             const breakNode = document.createElement("div");
             breakNode.className = "line-break";
             map.appendChild(breakNode);
-            lines.push({ lineIndex, wordIndices: [], handle: null, raw: "" });
             return;
           }
 
+          visibleLineNumber += 1;
           const row = document.createElement("div");
           row.className = "line-row";
 
           const handle = document.createElement("button");
           handle.type = "button";
           handle.className = "line-handle";
-          handle.textContent = String(lineIndex + 1);
+          handle.textContent = String(visibleLineNumber);
 
           const wordsWrap = document.createElement("div");
           wordsWrap.className = "line-words";
+          wordsWrap.style.flexWrap = allowWrapForMeasurement ? "wrap" : "nowrap";
           const pitchSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
           pitchSvg.classList.add("pitch-line-layer");
           const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
           const gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
-          const gradientId = "pitch-gradient-" + lineIndex + "-" + Date.now();
+          const gradientId = "pitch-gradient-" + line.lineIndex + "-" + Date.now();
           gradient.setAttribute("id", gradientId);
           gradient.setAttribute("x1", "0%");
           gradient.setAttribute("y1", "100%");
@@ -706,7 +762,7 @@
           gradient.appendChild(createStop("100%", "#ffe667"));
 
           const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-          const clipId = "pitch-gap-clip-" + lineIndex + "-" + Date.now();
+          const clipId = "pitch-gap-clip-" + line.lineIndex + "-" + Date.now();
           clipPath.setAttribute("id", clipId);
           defs.append(gradient, clipPath);
 
@@ -725,54 +781,99 @@
           breathLayer.className = "breath-layer";
           wordsWrap.appendChild(breathLayer);
 
-          const wordIndices = [];
-
-          lineText.trim().split(/\s+/).forEach(function (wordText) {
-            const data = makeWordData(wordText, globalIndex, lineIndex);
-            const card = createWordCard(data);
-            data.card = card;
-            words.push(data);
-            wordIndices.push(globalIndex);
+          line.wordIndices.forEach(function (wordIndex) {
+            const word = words[wordIndex];
+            if (!word) return;
+            word.lineIndex = line.lineIndex;
+            const card = createWordCard(word);
+            word.card = card;
             wordsWrap.appendChild(card);
-            globalIndex += 1;
           });
 
           handle.addEventListener("click", function (event) {
-            handleLineSelection(lineIndex, event);
+            handleLineSelection(line.lineIndex, event);
           });
 
           wordsWrap.addEventListener("mousedown", function (event) {
             if (drawMode !== "breath" || event.button !== 0) return;
             isDrawing = true;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
+            placeBreathMarker(line.lineIndex, event.clientX, event.clientY);
             event.preventDefault();
           });
 
           wordsWrap.addEventListener("mousemove", function (event) {
             if (!isDrawing || drawMode !== "breath") return;
-            placeBreathMarker(lineIndex, event.clientX, event.clientY);
+            placeBreathMarker(line.lineIndex, event.clientX, event.clientY);
           });
 
           row.append(handle, wordsWrap);
           map.appendChild(row);
-          lines.push({
-            lineIndex,
-            wordIndices,
-            handle,
-            raw: lineText,
-            wordsWrap,
-            pitchSvg,
-            pitchSoft,
-            pitchStrong,
-            clipPath,
-            breaths: [],
-            breathLayer
+
+          line.handle = handle;
+          line.wordsWrap = wordsWrap;
+          line.pitchSvg = pitchSvg;
+          line.pitchSoft = pitchSoft;
+          line.pitchStrong = pitchStrong;
+          line.clipPath = clipPath;
+          line.breathLayer = breathLayer;
+          line.breaths = Array.isArray(line.breaths) ? line.breaths : [];
+          renderBreathMarkers(line);
+        });
+      }
+
+      function splitWrappedLinesIntoRealLines() {
+        const splitLines = [];
+
+        lines.forEach(function (line) {
+          if (!line.wordIndices.length || !line.wordsWrap) {
+            splitLines.push({ lineIndex: splitLines.length, wordIndices: [], raw: "", breaths: [] });
+            return;
+          }
+
+          const groupedByVisualRow = getWrappedWordGroups(line);
+          if (groupedByVisualRow.length <= 1) {
+            splitLines.push({
+              lineIndex: splitLines.length,
+              wordIndices: line.wordIndices.slice(),
+              raw: line.raw,
+              breaths: Array.isArray(line.breaths) ? line.breaths.slice() : []
+            });
+            return;
+          }
+
+          groupedByVisualRow.forEach(function (groupWordIndices, groupIndex) {
+            splitLines.push({
+              lineIndex: splitLines.length,
+              wordIndices: groupWordIndices,
+              raw: groupWordIndices.map(function (idx) { return words[idx].text; }).join(" "),
+              breaths: groupIndex === 0 && Array.isArray(line.breaths) ? line.breaths.slice() : []
+            });
           });
         });
 
-        composer.classList.add("collapsed");
-        updateSelectionUI();
-        redrawAllPitchLines();
+        lines = splitLines;
+      }
+
+      function getWrappedWordGroups(line) {
+        const groups = [];
+        line.wordIndices.forEach(function (wordIndex) {
+          const word = words[wordIndex];
+          if (!word || !word.card) return;
+          const top = word.card.getBoundingClientRect().top;
+          const existing = groups.find(function (group) {
+            return Math.abs(group.top - top) <= LINE_SPLIT_TOLERANCE_PX;
+          });
+          if (existing) {
+            existing.wordIndices.push(wordIndex);
+            existing.tops.push(top);
+            existing.top = existing.tops.reduce(function (sum, value) { return sum + value; }, 0) / existing.tops.length;
+          } else {
+            groups.push({ top, tops: [top], wordIndices: [wordIndex] });
+          }
+        });
+
+        groups.sort(function (a, b) { return a.top - b.top; });
+        return groups.map(function (group) { return group.wordIndices; });
       }
 
       function createWordCard(wordData) {
