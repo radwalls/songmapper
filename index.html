@@ -232,7 +232,7 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      overflow: visible;
+      overflow: hidden;
       pointer-events: none;
       z-index: 3;
     }
@@ -1395,16 +1395,14 @@
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
 
-        const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
-          : line.wordIndices.map(function (idx) {
-            const w = words[idx];
-            const cardRect = w.card.getBoundingClientRect();
-            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
-          });
+        const points = getRenderablePitchPoints(line, width, height);
+        if (!points.length) {
+          line.pitchSoft.setAttribute("d", "");
+          line.pitchStrong.setAttribute("d", "");
+          updatePitchGapClip(line, width, height);
+          renderPitchPoints(line, height);
+          return;
+        }
 
         if (points.length === 1) {
           const single = points[0];
@@ -1416,16 +1414,19 @@
           return;
         }
 
+        const maxSegmentYDelta = 18;
         let d = "M " + points[0].x + " " + points[0].y;
         for (let i = 1; i < points.length; i += 1) {
           const prev = points[i - 1];
           const curr = points[i];
-          const midX = (prev.x + curr.x) / 2;
-          const midY = (prev.y + curr.y) / 2;
-          d += " Q " + prev.x + " " + prev.y + " " + midX + " " + midY;
+          const movedToNewVisualRow = prev.rowIndex !== curr.rowIndex;
+          const yJumpedTooFar = Math.abs(curr.y - prev.y) > maxSegmentYDelta;
+          if (movedToNewVisualRow || yJumpedTooFar) {
+            d += " M " + curr.x + " " + curr.y;
+            continue;
+          }
+          d += " Q " + prev.x + " " + prev.y + " " + curr.x + " " + curr.y;
         }
-        const last = points[points.length - 1];
-        d += " T " + last.x + " " + last.y;
         line.pitchSoft.setAttribute("d", d);
         line.pitchStrong.setAttribute("d", d);
         updatePitchGapClip(line, width, height);
@@ -1458,6 +1459,59 @@
         });
         line.pitchSvg.insertBefore(guides, line.pitchSoft);
         renderMusicRollLabels(line, height);
+      }
+
+      function getRenderablePitchPoints(line, width, height) {
+        if (!line || !Array.isArray(line.pitchPoints) || !line.pitchPoints.length) return [];
+        const rows = getVisualRows(line);
+        return line.pitchPoints
+          .map(function (point) {
+            const x = clamp(Number(point.x) || 0, 0, width);
+            const y = clamp(Number(point.y) || 0, 0, height);
+            const rowIndex = getRowIndexForY(rows, y);
+            return { id: point.id, x, y, rowIndex };
+          })
+          .sort(function (a, b) {
+            if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+            if (a.x !== b.x) return a.x - b.x;
+            return a.y - b.y;
+          });
+      }
+
+      function getVisualRows(line) {
+        const wrapRect = line.wordsWrap.getBoundingClientRect();
+        const threshold = 8;
+        const rows = [];
+        line.wordIndices.forEach(function (idx) {
+          const word = words[idx];
+          if (!word || !word.card) return;
+          const rect = word.card.getBoundingClientRect();
+          const centerY = (rect.top - wrapRect.top) + (rect.height / 2);
+          let row = rows.find(function (item) { return Math.abs(item.centerY - centerY) <= threshold; });
+          if (!row) {
+            row = { centerY, count: 0 };
+            rows.push(row);
+          }
+          row.centerY = ((row.centerY * row.count) + centerY) / (row.count + 1);
+          row.count += 1;
+        });
+        rows.sort(function (a, b) { return a.centerY - b.centerY; });
+        if (!rows.length) rows.push({ centerY: 0, count: 1 });
+        return rows;
+      }
+
+      function getRowIndexForY(rows, y) {
+        if (!rows.length) return 0;
+        let rowIndex = 0;
+        let closestDistance = Math.abs(rows[0].centerY - y);
+        for (let i = 1; i < rows.length; i += 1) {
+          const distance = Math.abs(rows[i].centerY - y);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            rowIndex = i;
+          }
+        }
+        return rowIndex;
       }
 
       function renderMusicRollLabels(line, height) {
