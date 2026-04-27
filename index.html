@@ -232,7 +232,7 @@
       inset: 0;
       width: 100%;
       height: 100%;
-      overflow: visible;
+      overflow: hidden;
       pointer-events: none;
       z-index: 3;
     }
@@ -1395,24 +1395,22 @@
         line.pitchSvg.setAttribute("preserveAspectRatio", "none");
         renderMusicGuides(line, width, height);
 
-        const points = (line.pitchPoints && line.pitchPoints.length)
-          ? line.pitchPoints.slice().sort(function (a, b) { return a.x - b.x; })
-          : line.wordIndices.map(function (idx) {
-            const w = words[idx];
-            const cardRect = w.card.getBoundingClientRect();
-            const x = (cardRect.left - wrapRect.left) + (cardRect.width / 2);
-            const yRatio = 1 - (clamp(w.pitch, 0, 100) / 100);
-            const y = (cardRect.top - wrapRect.top) + (yRatio * cardRect.height);
-            return { x, y };
-          });
+        const points = getRenderedPitchPoints(line, wrapRect, width, height);
+        if (!points.length) {
+          line.pitchSoft.removeAttribute("d");
+          line.pitchStrong.removeAttribute("d");
+          updatePitchGapClip(line, width, height, points);
+          renderPitchPoints(line, height, points);
+          return;
+        }
 
         if (points.length === 1) {
           const single = points[0];
           const singlePath = "M " + single.x + " " + single.y + " L " + (single.x + 1) + " " + single.y;
           line.pitchSoft.setAttribute("d", singlePath);
           line.pitchStrong.setAttribute("d", singlePath);
-          updatePitchGapClip(line, width, height);
-          renderPitchPoints(line, height);
+          updatePitchGapClip(line, width, height, points);
+          renderPitchPoints(line, height, points);
           return;
         }
 
@@ -1420,16 +1418,97 @@
         for (let i = 1; i < points.length; i += 1) {
           const prev = points[i - 1];
           const curr = points[i];
+          if (curr.rowIndex !== prev.rowIndex) {
+            d += " L " + prev.x + " " + curr.y + " L " + curr.x + " " + curr.y;
+            continue;
+          }
           const midX = (prev.x + curr.x) / 2;
           const midY = (prev.y + curr.y) / 2;
           d += " Q " + prev.x + " " + prev.y + " " + midX + " " + midY;
         }
-        const last = points[points.length - 1];
-        d += " T " + last.x + " " + last.y;
         line.pitchSoft.setAttribute("d", d);
         line.pitchStrong.setAttribute("d", d);
-        updatePitchGapClip(line, width, height);
-        renderPitchPoints(line, height);
+        updatePitchGapClip(line, width, height, points);
+        renderPitchPoints(line, height, points);
+      }
+
+      function getRenderedPitchPoints(line, wrapRect, width, height) {
+        if (!line || !Array.isArray(line.pitchPoints) || !line.pitchPoints.length) return [];
+        const wordLayouts = getWordLayouts(line, wrapRect);
+        if (!wordLayouts.length) return [];
+
+        return line.pitchPoints.map(function (point) {
+          const nearest = findNearestWordLayout(wordLayouts, point.x, point.y);
+          const relX = clamp((point.x - nearest.left) / Math.max(1, nearest.width), 0, 1);
+          const relY = clamp((point.y - nearest.top) / Math.max(1, nearest.height), 0, 1);
+          return {
+            id: point.id,
+            x: clamp(nearest.left + (nearest.width * relX), 0, width),
+            y: clamp(nearest.top + (nearest.height * relY), 0, height),
+            rowIndex: nearest.rowIndex,
+            orderKey: nearest.orderKey + relX
+          };
+        }).sort(function (a, b) {
+          return a.orderKey - b.orderKey;
+        });
+      }
+
+      function getWordLayouts(line, wrapRect) {
+        const tolerance = 10;
+        const rows = [];
+        const sortedCards = line.wordIndices.map(function (idx) {
+          const card = words[idx].card;
+          const r = card.getBoundingClientRect();
+          return {
+            left: r.left - wrapRect.left,
+            right: r.right - wrapRect.left,
+            top: r.top - wrapRect.top,
+            bottom: r.bottom - wrapRect.top
+          };
+        }).sort(function (a, b) {
+          if (Math.abs(a.top - b.top) > tolerance) return a.top - b.top;
+          return a.left - b.left;
+        });
+
+        sortedCards.forEach(function (card) {
+          let rowIndex = rows.findIndex(function (rowTop) {
+            return Math.abs(rowTop - card.top) <= tolerance;
+          });
+          if (rowIndex === -1) {
+            rows.push(card.top);
+            rowIndex = rows.length - 1;
+          }
+          card.rowIndex = rowIndex;
+        });
+
+        const rowOrder = rows.map(function (_, rowIndex) {
+          return sortedCards.filter(function (card) { return card.rowIndex === rowIndex; })
+            .sort(function (a, b) { return a.left - b.left; });
+        });
+
+        return sortedCards.map(function (card) {
+          const inRow = rowOrder[card.rowIndex];
+          const colIndex = inRow.findIndex(function (item) { return item === card; });
+          return {
+            left: card.left,
+            top: card.top,
+            width: Math.max(1, card.right - card.left),
+            height: Math.max(1, card.bottom - card.top),
+            cx: card.left + ((card.right - card.left) / 2),
+            cy: card.top + ((card.bottom - card.top) / 2),
+            rowIndex: card.rowIndex,
+            orderKey: (card.rowIndex * 1000) + colIndex
+          };
+        });
+      }
+
+      function findNearestWordLayout(wordLayouts, x, y) {
+        return wordLayouts.reduce(function (closest, item) {
+          if (!closest) return item;
+          const closestDist = Math.hypot(closest.cx - x, closest.cy - y);
+          const currentDist = Math.hypot(item.cx - x, item.cy - y);
+          return currentDist < closestDist ? item : closest;
+        }, null);
       }
 
       function renderMusicGuides(line, width, height) {
@@ -1479,13 +1558,13 @@
         });
       }
 
-      function renderPitchPoints(line, height) {
+      function renderPitchPoints(line, height, points) {
         if (!line || !line.pitchSvg) return;
         const existing = line.pitchSvg.querySelector(".pitch-points");
         if (existing) existing.remove();
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
         group.setAttribute("class", "pitch-points");
-        (line.pitchPoints || []).forEach(function (point) {
+        (points || []).forEach(function (point) {
           const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
           circle.setAttribute("cx", String(point.x));
           circle.setAttribute("cy", String(point.y));
@@ -1505,8 +1584,9 @@
         line.pitchSvg.appendChild(group);
       }
 
-      function updatePitchGapClip(line, width, height) {
+      function updatePitchGapClip(line, width, height, points) {
         while (line.clipPath.firstChild) line.clipPath.removeChild(line.clipPath.firstChild);
+        if (!points || !points.length) return;
 
         const gaps = getLineGapRects(line, width, height);
         gaps.forEach(function (gap) {
